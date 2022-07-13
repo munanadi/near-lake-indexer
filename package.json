@@ -1,0 +1,19 @@
+{
+  "name": "near-lake-raw-printer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsc && node index.js"
+  },
+  "dependencies": {
+    "borsh": "^0.7.0",
+    "near-api-js": "^0.45.1",
+    "near-lake-framework": "^1.0.1",
+    "winston": "^3.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.3",
+    "typescript": "^4.6.4"
+  }
+}
