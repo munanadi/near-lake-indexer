@@ -30,80 +30,92 @@ async function handleStreamerMessage(
   const block = streamerMessage.block;
   const shards = streamerMessage.shards;
 
-  console.log(`Block #${block.header.height} Shards: ${shards.length}`);
+  console.log(
+    `Block #${block.header.height} ${new Date(
+      +block.header.timestampNanosec / 1000000
+    ).toString()} Shards: ${shards.length}`
+  );
 
-  //   shard1Logger.info(`{ "block": ${block.header.height} , "chunks": [ `);
+  // shard1Logger.info(`{ \"block\": ${block.header.height} , \"chunks\": [ `);
   for (const shard of shards) {
     // console.log(JSON.stringify(shard, null, 2));
-    // shard1Logger.info(shard);
+    // shard1Logger.info(JSON.stringify(shard));
     // shard1Logger.info(',');
 
     if (shard.receiptExecutionOutcomes) {
-      for (const receipt of shard.receiptExecutionOutcomes) {
-        if (receiptSet.has(receipt.receipt.receiptId)) {
-          console.log(
-            `Receipt of ${receipt.receipt.receiptId} is \n ${JSON.stringify(
-              receipt.receipt,
-              null,
-              2
-            )}`
-          );
+      const receiptExecutionOutcomes = shard.receiptExecutionOutcomes;
 
-          if (
-            receipt.receipt.receipt['Action'] &&
-            receipt.receipt.receipt['Action'].actions
-          ) {
-            for (const action of receipt.receipt.receipt['Action'].actions) {
-              console.log(action);
+      for (const receiptExecutionOutcome of receiptExecutionOutcomes) {
+        const { executionOutcome, receipt: ExeReceipt } =
+          receiptExecutionOutcome;
+
+        const {
+          id,
+          outcome: { logs, receiptIds, status },
+        } = executionOutcome;
+
+        const { receipt, receiptId } = ExeReceipt;
+
+        if (receiptSet.has(receiptId)) {
+          console.log(`Receipt of ${receiptId} is \n ${receipt}`);
+
+          if (receipt['Action'] && receipt['Action'].actions) {
+            for (const action of receipt['Action'].actions) {
               const returnedJson = takeActionsAndReturnArgs(action);
-              console.log('Does this work? ', returnedJson);
+              console.log(Object.keys(action), returnedJson);
+              console.log('LOGS: ', logs);
             }
           }
 
           // Delete receipt id after tracking
-          receiptSet.delete(receipt.receipt.receiptId);
-        } else if (
-          receipt.receipt.receipt['Action'] &&
-          receipt.receipt.receipt['Action'].actions
-        ) {
-          for (const action of receipt.receipt.receipt['Action'].actions) {
-            // console.log(action);
-            if (
-              action['FunctionCall'] &&
-              action['FunctionCall'].methodName === 'ft_transfer_call'
-            ) {
-              const args = action['FunctionCall'].args;
+          receiptSet.delete(receiptId);
+        }
 
-              try {
-                const decodedArgs = Buffer.from(args.toString(), 'base64');
-                const parsedJSONArgs = JSON.parse(decodedArgs.toString());
-                const memo = parsedJSONArgs['memo'] ?? '';
+        if (receipt['Action'] && receipt['Action'].actions) {
+          const receiptActions = receipt['Action'].actions;
 
-                if (memo === 'arbitoor') {
-                  console.log(parsedJSONArgs);
-                  console.log(receipt.executionOutcome);
+          for (const action of receiptActions) {
+            if (action['FunctionCall']) {
+              if (action['FunctionCall']) {
+                if (action['FunctionCall'].methodName === 'ft_transfer_call') {
+                  const args = action['FunctionCall'].args;
 
-                  // Add receipt ids to track
-                  receipt.executionOutcome.outcome.receiptIds.forEach(
-                    (receipt) => receiptSet.add(receipt)
-                  );
+                  try {
+                    const decodedArgs = Buffer.from(args.toString(), 'base64');
+                    const parsedJSONArgs = JSON.parse(decodedArgs.toString());
+                    const memo = parsedJSONArgs['memo'] ?? '';
 
-                  //  // Add Status receipt ids to track
-                  //  if (
-                  //     receipt.executionOutcome.outcome.status['SuccessReceiptId']
-                  //   ) {
-                  //     receiptSet.add(
-                  //       receipt.executionOutcome.outcome.status[
-                  //         'SuccessReceiptId'
-                  //       ]
-                  //     );
-                  //   }
+                    if (memo === 'arbitoor') {
+                      console.log(parsedJSONArgs);
+                      console.log(id, status);
+
+                      // Add receipt ids to track
+                      receiptIds.forEach((receipt) => receiptSet.add(receipt));
+
+                      // Add Status receipt ids to track
+                      if (status['SuccessReceiptId']) {
+                        receiptSet.add(status['SuccessReceiptId']);
+                      }
+
+                      if (status['SuccessValue']) {
+                        receiptSet.add(status['SuccessValue']);
+                      }
+                    }
+                  } catch {
+                    // TODO: handle better, exit to investigate what went wrong maybe?
+                    console.log('FAILED');
+                  }
                 }
-              } catch {
-                // TODO: handle better, exit to investigate what went wrong maybe?
-                console.log('FAILED');
+                //  else {
+                //   console.log('FN CALL', action['FunctionCall'].methodName);
+                // }
               }
             }
+            //  else if (action['Transfer']) {
+            //   console.log('TRANSFER', action['Transfer']);
+            // } else {
+            //   console.log('OTHER', action);
+            // }
           }
         }
       }
@@ -118,7 +130,7 @@ async function handleStreamerMessage(
     );
   }
 
-  //   shard1Logger.info(` ] }`);
+  // shard1Logger.info(` ] }`);
 
   console.log('---------------------', '\n');
   return;
@@ -139,7 +151,7 @@ function takeActionsAndReturnArgs(actions: types.ReceiptEnum): JSON {
       const parsedJSONArgs = JSON.parse(decodedArgs.toString());
 
       result = parsedJSONArgs;
-    //   console.log(`Decoded args ${JSON.stringify(parsedJSONArgs, null, 2)}`);
+      //   console.log(`Decoded args ${JSON.stringify(parsedJSONArgs, null, 2)}`);
     } catch {
       // TODO: handle better, exit to investigate what went wrong maybe?
       console.log('FAILED INSIDE');
