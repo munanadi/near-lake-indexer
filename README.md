@@ -28,11 +28,16 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
  - Need to figure out how to map what receipt Ids are related to which ones? 
 
 3. `ft_on_transfer` has logs that can be used for Ref pools, Tonic and Spin markets
+ - These can be fetched from `1.` receiptIds itself. And no further fetching of receipts Ids are required.
+
+> Spin borsh serialized logs can be found here too.
 
 4. `callback_ft_on_transfer` has logs that can be used for Jumbo pools
+  - This might need to track on more `status` and look for that receipt id in the subsequent blocks too.
 
 5. Lastly `ft_resolve_transfer` indicates that a swap actually went through.
 
 ##### Table Schema
 
-`pool_id`, `token_in`, `token_out`, `amount_in`, `amount_out`, `dex`, 
+| `pool_id` or `market_id` | `token_in` | `token_out` | `amount_in` | `amount_out` | `dex` | `txn_hash` or `receipt_id` |
+| ------------------------ | ---------  | ----------  | ----------  | -----------  | ----  |  -----------------------   |

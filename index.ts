@@ -19,7 +19,8 @@ const shard1Logger = createLogger({
 const lakeConfig: types.LakeConfig = {
   s3BucketName: 'near-lake-data-mainnet',
   s3RegionName: 'eu-central-1',
-  startBlockHeight: 69253110,
+  // startBlockHeight: 69253110,
+  startBlockHeight: 70223685,
 };
 
 const receiptSet = new Set<string>();
@@ -51,18 +52,34 @@ async function handleStreamerMessage(
 
         const {
           id,
-          outcome: { logs, receiptIds, status },
+          outcome: { logs, receiptIds, status, executorId },
         } = executionOutcome;
 
         const { receipt, receiptId } = ExeReceipt;
 
         if (receiptSet.has(receiptId)) {
-          console.log(`Receipt of ${receiptId} is \n ${receipt}`);
+          console.log(`Receipt details of ${receiptId}}`);
+
+          console.log({
+            id,
+            receiptIds,
+            status,
+            executorId,
+            receipt,
+            receiptId,
+          });
 
           if (receipt['Action'] && receipt['Action'].actions) {
             for (const action of receipt['Action'].actions) {
               const returnedJson = takeActionsAndReturnArgs(action);
-              console.log(Object.keys(action), returnedJson);
+
+              console.log(
+                Object.keys(action),
+                action['FunctionCall']
+                  ? action['FunctionCall'].methodName
+                  : 'NOT A FN CALL',
+                returnedJson
+              );
               console.log('LOGS: ', logs);
             }
           }
@@ -87,7 +104,14 @@ async function handleStreamerMessage(
 
                     if (memo === 'arbitoor') {
                       console.log(parsedJSONArgs);
-                      console.log(id, status);
+                      console.log({
+                        id,
+                        receiptIds,
+                        status,
+                        executorId,
+                        receipt,
+                        receiptId,
+                      });
 
                       // Add receipt ids to track
                       receiptIds.forEach((receipt) => receiptSet.add(receipt));
