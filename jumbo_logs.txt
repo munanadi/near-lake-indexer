@@ -1,0 +1,3 @@
+Swapped 2864400000000000000 usn for 2863230 dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near, total fee 1432, admin fee 243
+Admin v1.jumbo_exchange.near got 243479519369768 shares from 243 dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near
+Swapped 2863230 dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near for 832850811100407145229804 wrap.near

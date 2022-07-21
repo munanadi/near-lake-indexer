@@ -1,0 +1,302 @@
+[
+  EventWithMeta {
+      data: Balance {
+          user_id: "skiran017.near",
+          token_id: 3,
+          amount: 55661100000000000000,
+          increased: true,
+          change_type: External,
+      },
+      id: 1328941,
+  },
+  EventWithMeta {
+      data: Orderbook {
+          market_id: 2,
+          price: 1000000,
+          quantity: 0,
+          side: Bid,
+      },
+      id: 1328942,
+  },
+  EventWithMeta {
+      data: Orderbook {
+          market_id: 2,
+          price: 999000,
+          quantity: 485534000000000000000,
+          side: Bid,
+      },
+      id: 1328943,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "skiran017.near",
+          token_id: 3,
+          amount: 55661000000000000000,
+          increased: false,
+          change_type: Locked(
+              185483,
+          ),
+      },
+      id: 1328944,
+  },
+  EventWithMeta {
+      data: Trade {
+          market_id: 2,
+          maker_order_id: 184978,
+          taker_order_id: 185483,
+          maker_fee: 8363,
+          maker_fee_token_id: 2,
+          taker_fee: 16726,
+          taker_fee_token_id: 2,
+          is_maker_fee_rebate: true,
+          price: 1000000,
+          quantity: 41815000000000000000,
+          side: Ask,
+      },
+      id: 1328945,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "ne_den.near",
+          token_id: 2,
+          amount: 41815000,
+          increased: false,
+          change_type: Trade(
+              184978,
+          ),
+      },
+      id: 1328946,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "ne_den.near",
+          token_id: 3,
+          amount: 41815000000000000000,
+          increased: true,
+          change_type: Trade(
+              184978,
+          ),
+      },
+      id: 1328947,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "ne_den.near",
+          token_id: 2,
+          amount: 8363,
+          increased: true,
+          change_type: Trade(
+              184978,
+          ),
+      },
+      id: 1328948,
+  },
+  EventWithMeta {
+      data: Order {
+          market_id: 2,
+          order_id: 184978,
+          user_id: "ne_den.near",
+          price: 1000000,
+          average_price: 1000000,
+          quantity: 80063000000000000000,
+          remaining: 0,
+          side: Bid,
+          status: Filled,
+          client_order_id: None,
+      },
+      id: 1328949,
+  },
+  EventWithMeta {
+      data: Trade {
+          market_id: 2,
+          maker_order_id: 185340,
+          taker_order_id: 185483,
+          maker_fee: 2200,
+          maker_fee_token_id: 2,
+          taker_fee: 4400,
+          taker_fee_token_id: 2,
+          is_maker_fee_rebate: true,
+          price: 1000000,
+          quantity: 11000000000000000000,
+          side: Ask,
+      },
+      id: 1328950,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "leed.near",
+          token_id: 2,
+          amount: 11000000,
+          increased: false,
+          change_type: Trade(
+              185340,
+          ),
+      },
+      id: 1328951,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "leed.near",
+          token_id: 3,
+          amount: 11000000000000000000,
+          increased: true,
+          change_type: Trade(
+              185340,
+          ),
+      },
+      id: 1328952,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "leed.near",
+          token_id: 2,
+          amount: 2200,
+          increased: true,
+          change_type: Trade(
+              185340,
+          ),
+      },
+      id: 1328953,
+  },
+  EventWithMeta {
+      data: Order {
+          market_id: 2,
+          order_id: 185340,
+          user_id: "leed.near",
+          price: 1000000,
+          average_price: 1000000,
+          quantity: 11000000000000000000,
+          remaining: 0,
+          side: Bid,
+          status: Filled,
+          client_order_id: None,
+      },
+      id: 1328954,
+  },
+  EventWithMeta {
+      data: Trade {
+          market_id: 2,
+          maker_order_id: 183700,
+          taker_order_id: 185483,
+          maker_fee: 568,
+          maker_fee_token_id: 2,
+          taker_fee: 1137,
+          taker_fee_token_id: 2,
+          is_maker_fee_rebate: true,
+          price: 999000,
+          quantity: 2846000000000000000,
+          side: Ask,
+      },
+      id: 1328955,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "2.spimm.near",
+          token_id: 2,
+          amount: 2843154,
+          increased: false,
+          change_type: Trade(
+              183700,
+          ),
+      },
+      id: 1328956,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "2.spimm.near",
+          token_id: 3,
+          amount: 2846000000000000000,
+          increased: true,
+          change_type: Trade(
+              183700,
+          ),
+      },
+      id: 1328957,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "2.spimm.near",
+          token_id: 2,
+          amount: 568,
+          increased: true,
+          change_type: Trade(
+              183700,
+          ),
+      },
+      id: 1328958,
+  },
+  EventWithMeta {
+      data: Order {
+          market_id: 2,
+          order_id: 183700,
+          user_id: "2.spimm.near",
+          price: 999000,
+          average_price: 999000,
+          quantity: 500000000000000000000,
+          remaining: 485534000000000000000,
+          side: Bid,
+          status: PartiallyFilled,
+          client_order_id: None,
+      },
+      id: 1328959,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "skiran017.near",
+          token_id: 3,
+          amount: 55661000000000000000,
+          increased: false,
+          change_type: Trade(
+              185483,
+          ),
+      },
+      id: 1328960,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "skiran017.near",
+          token_id: 2,
+          amount: 55635890,
+          increased: true,
+          change_type: Trade(
+              185483,
+          ),
+      },
+      id: 1328961,
+  },
+  EventWithMeta {
+      data: Order {
+          market_id: 2,
+          order_id: 185483,
+          user_id: "skiran017.near",
+          price: 999000,
+          average_price: 999948,
+          quantity: 55661000000000000000,
+          remaining: 0,
+          side: Ask,
+          status: Filled,
+          client_order_id: None,
+      },
+      id: 1328962,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "skiran017.near",
+          token_id: 2,
+          amount: 55635890,
+          increased: false,
+          change_type: External,
+      },
+      id: 1328963,
+  },
+  EventWithMeta {
+      data: Balance {
+          user_id: "skiran017.near",
+          token_id: 3,
+          amount: 100000000000000,
+          increased: false,
+          change_type: External,
+      },
+      id: 1328964,
+  },
+]
