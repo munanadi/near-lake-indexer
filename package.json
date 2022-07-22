@@ -7,12 +7,15 @@
     "start": "tsc && node index.js"
   },
   "dependencies": {
+    "big.js": "^6.2.1",
     "borsh": "^0.7.0",
     "near-api-js": "^0.45.1",
     "near-lake-framework": "^1.0.1",
-    "winston": "^3.8.1"
+    "winston": "^3.8.1",
+    "winston-csv-format": "^2.0.3"
   },
   "devDependencies": {
+    "@types/big.js": "^6.1.5",
     "@types/node": "^18.0.3",
     "typescript": "^4.6.4"
   }

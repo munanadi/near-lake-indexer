@@ -41,3 +41,30 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
 
 | `pool_id` or `market_id` | `token_in` | `token_out` | `amount_in` | `amount_out` | `dex` | `txn_hash` or `receipt_id` |
 | ------------------------ | ---------  | ----------  | ----------  | -----------  | ----  |  -----------------------   |
+
+
+#### RESULTS
+
+##### 1. Ref
+
+```
+[
+  '7BGhx36rurv1str4zzzhzZVeV5dNFamBoSbcUhVfCnLB -> Wed Jul 06 2022 10:57:21 GMT+0530 (India Standard Time)  v2.ref-finance.near spoiler.near SUCCESS \n' +
+    'SWAPS : \n' +
+    '11 : wrap.near 744477563434064562397229 => marmaj.tkn.near 676754020909614668 \n' +
+    ',3135 : marmaj.tkn.near 676754020909614668 => usn 2525254141954403206 \n' +
+    ',3449 : wrap.near 255522436565935437602771 => token.pembrock.near 9482415898108003692 \n' +
+    ',3448 : token.pembrock.near 9482415898108003692 => usn 864815496287069361 \n'
+]
+```
+
+##### 2. Jumbo
+
+```
+[
+  'Cv4EFz3jzRETvBLvstvMDDRrdRQMmfCNs1JFEvsTc5SF -> Wed Jul 06 2022 19:27:14 GMT+0530 (India Standard Time)  v1.jumbo_exchange.near spoiler.near FAIL \n' +
+    'SWAPS : \n' +
+    '248 : usn 2864400000000000000 => dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near 0 \n' +
+    ',1 : dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near undefined => wrap.near 0 \n'
+]
+```
