@@ -2,9 +2,9 @@
 
 A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com/near/near-lake-framework-js).
 
-- [ ] How to relate to the receipt ids that are parsed from a txns initially and map them back to this starting point.
+- [x] How to relate to the receipt ids that are parsed from a txns initially and map them back to this starting point.
 - [ ] What kind of table schema to store?
-- [ ] ~~How many tokens were actually exchanged?~~ Spin has brosh seriazlized logs.
+- [x] ~~How many tokens were actually exchanged?  Spin has brosh seriazlized logs.~~ Did away with other methods
 - [x] Able to read the receipts and filter out using `memo`
 - [x] Need to figure out how to check if transactions are successful or failed? `ft_resolve_transfer` ?
 
@@ -14,7 +14,6 @@ A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com
 
 - `shard.chunk.receipts' or `shard.chunk.transactions`cannot be used to parse for`memo` field
 
-
 #### PLAN
 
 There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spin- which can be split into two types - AMM's and Orderbooks
@@ -22,26 +21,29 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
 > Spin has borsh serialized logs so skipping it for now
 
 1. All transactions have a `ft_transfer_call` which has actions that can be parsed for `memo` field which can be used to filter transactions
- - This further has receipts ids that you get for the further executions.
 
-2. The receipt ids that are collected are tracked for further investigation. 
- - Need to figure out how to map what receipt Ids are related to which ones? 
+- This further has receipts ids that you get for the further executions.
+
+2. The receipt ids that are collected are tracked for further investigation.
+
+- Need to figure out how to map what receipt Ids are related to which ones?
 
 3. `ft_on_transfer` has logs that can be used for Ref pools, Tonic and Spin markets
- - These can be fetched from `1.` receiptIds itself. And no further fetching of receipts Ids are required.
+
+- These can be fetched from `1.` receiptIds itself. And no further fetching of receipts Ids are required.
 
 > Spin borsh serialized logs can be found here too.
 
 4. `callback_ft_on_transfer` has logs that can be used for Jumbo pools
-  - This might need to track on more `status` and look for that receipt id in the subsequent blocks too.
+
+- This might need to track on more `status` and look for that receipt id in the subsequent blocks too.
 
 5. Lastly `ft_resolve_transfer` indicates that a swap actually went through.
 
 ##### Table Schema
 
 | `pool_id` or `market_id` | `token_in` | `token_out` | `amount_in` | `amount_out` | `dex` | `txn_hash` or `receipt_id` |
-| ------------------------ | ---------  | ----------  | ----------  | -----------  | ----  |  -----------------------   |
-
+| ------------------------ | ---------- | ----------- | ----------- | ------------ | ----- | -------------------------- |
 
 #### RESULTS
 
@@ -68,3 +70,65 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
     ',1 : dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near undefined => wrap.near 0 \n'
 ]
 ```
+
+##### 3. Tonic
+
+```
+{
+  "3zWnEX3rbY2DhqJjtFjSKXD3way1Wc2Wk3ks6aaBSXLV": {
+    "dex": "v1.orderbook.near",
+    "blocktime": 1658278151723.6606,
+    "blockHeight": 70223685,
+    "sender": "skiran017.near",
+    "success": true,
+    "swaps": [
+      {
+        "pool_id": "J5mggeEGCyXVUibvYTe9ydVBrELECRUu23VRk2TwC2is",
+        "amount_in": "409597973",
+        "amount_out": "409340000000000000000",
+        "token_in": "usn",
+        "token_out": "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near"
+      }
+    ]
+  }
+}
+```
+
+##### 4. Spin
+
+```
+{
+  "F7oRXo6caLhv8YfceTmKFU1DUykvVDjqQhbU7X3wB7oJ": {
+    "dex": "spot.spin-fi.near",
+    "blocktime": 1657213857934.6562,
+    "blockHeight": 69328535,
+    "sender": "skiran017.near",
+    "success": true,
+    "swaps": [
+      {
+        "pool_id": 2,
+        "amount_in": "55661100000000000000",
+        "amount_out": "55635890",
+        "token_in": "usn",
+        "token_out": "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near"
+      }
+    ]
+  }
+}
+```
+
+##### ERRROS
+
+1. Bad gateway error while fetching tonic markets
+
+```
+BadGatewayError:
+<html><head>
+<meta http-equiv="content-type" content="text/html;charset=utf-8">
+<title>502 Server Error</title>
+</head>
+<body text=#000000 bgcolor=#ffffff>
+<h1>Error: Server Error</h1>
+```
+
+2. S3 sometimes time out, retries automatically though
