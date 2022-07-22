@@ -4,7 +4,7 @@ A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com
 
 - [x] How to relate to the receipt ids that are parsed from a txns initially and map them back to this starting point.
 - [ ] What kind of table schema to store?
-- [x] ~~How many tokens were actually exchanged?  Spin has brosh seriazlized logs.~~ Did away with other methods
+- [x] ~~How many tokens were actually exchanged? Spin has brosh seriazlized logs.~~ Did away with other methods
 - [x] Able to read the receipts and filter out using `memo`
 - [x] Need to figure out how to check if transactions are successful or failed? `ft_resolve_transfer` ?
 
@@ -50,25 +50,76 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
 ##### 1. Ref
 
 ```
-[
-  '7BGhx36rurv1str4zzzhzZVeV5dNFamBoSbcUhVfCnLB -> Wed Jul 06 2022 10:57:21 GMT+0530 (India Standard Time)  v2.ref-finance.near spoiler.near SUCCESS \n' +
-    'SWAPS : \n' +
-    '11 : wrap.near 744477563434064562397229 => marmaj.tkn.near 676754020909614668 \n' +
-    ',3135 : marmaj.tkn.near 676754020909614668 => usn 2525254141954403206 \n' +
-    ',3449 : wrap.near 255522436565935437602771 => token.pembrock.near 9482415898108003692 \n' +
-    ',3448 : token.pembrock.near 9482415898108003692 => usn 864815496287069361 \n'
-]
+{
+  "7BGhx36rurv1str4zzzhzZVeV5dNFamBoSbcUhVfCnLB": {
+    "dex": "v2.ref-finance.near",
+    "blocktime": 1657085241626.2317,
+    "blockHeight": 69229361,
+    "sender": "spoiler.near",
+    "success": true,
+    "swaps": [
+      {
+        "amount_in": "744477563434064562397229",
+        "amount_out": "676754020909614668",
+        "token_in": "wrap.near",
+        "token_out": "marmaj.tkn.near",
+        "pool_id": 11
+      },
+      {
+        "amount_in": "676754020909614668",
+        "amount_out": "2525254141954403206",
+        "token_in": "marmaj.tkn.near",
+        "token_out": "usn",
+        "pool_id": 3135
+      },
+      {
+        "amount_in": "255522436565935437602771",
+        "amount_out": "9482415898108003692",
+        "token_in": "wrap.near",
+        "token_out": "token.pembrock.near",
+        "pool_id": 3449
+      },
+      {
+        "amount_in": "9482415898108003692",
+        "amount_out": "864815496287069361",
+        "token_in": "token.pembrock.near",
+        "token_out": "usn",
+        "pool_id": 3448
+      }
+    ]
+  }
+}
 ```
 
 ##### 2. Jumbo
 
 ```
-[
-  'Cv4EFz3jzRETvBLvstvMDDRrdRQMmfCNs1JFEvsTc5SF -> Wed Jul 06 2022 19:27:14 GMT+0530 (India Standard Time)  v1.jumbo_exchange.near spoiler.near FAIL \n' +
-    'SWAPS : \n' +
-    '248 : usn 2864400000000000000 => dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near 0 \n' +
-    ',1 : dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near undefined => wrap.near 0 \n'
-]
+{
+  "Cv4EFz3jzRETvBLvstvMDDRrdRQMmfCNs1JFEvsTc5SF": {
+    "dex": "v1.jumbo_exchange.near",
+    "blocktime": 1657115834059.8887,
+    "blockHeight": 69253111,
+    "sender": "spoiler.near",
+    "success": false,
+    "swaps": [
+      {
+        "amount_in": "2864400000000000000",
+        "amount_out": "2863230",
+        "token_in": "usn",
+        "token_out": "dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near,",
+        "pool_id": 248
+      },
+      {
+        "amount_in": "2863230",
+        "amount_out": "832850811100407145229804",
+        "token_in": "dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near",
+        "token_out": "wrap.near",
+        "pool_id": 1
+      }
+    ]
+  }
+}
+
 ```
 
 ##### 3. Tonic
