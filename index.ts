@@ -1,11 +1,13 @@
 import { startStream, types } from 'near-lake-framework';
 import { createLogger, transports, format } from 'winston';
+// @ts-ignore
 import CSV from 'winston-csv-format';
 import { Big } from 'big.js';
 import { TokenInfo, TokenListProvider } from '@tonic-foundation/token-list';
 import { MainnetRpc } from 'near-workspaces';
 import { InMemoryProvider, TonicMarket } from '@arbitoor/arbitoor-core';
-import { Market as SpinMarket, Spin } from '@spinfi/core';
+import { Market as SpinMarket } from '@spinfi/core';
+import { Pool } from 'pg';
 
 const txnCsvLogger = createLogger({
   level: 'info',
@@ -33,6 +35,10 @@ const txnCsvLogger = createLogger({
   ],
 });
 
+const pool = new Pool({
+  connectionString: 'postgres://postgres:root@localhost:5432/postgres',
+});
+
 const shard1Logger = createLogger({
   level: 'info',
   format: format.json(),
@@ -54,18 +60,20 @@ const lakeConfig: types.LakeConfig = {
   // startBlockHeight: 69253110, // Jumbo
   // startBlockHeight: 70223685, // Tonic
   // startBlockHeight: 69229361, // Ref
-  startBlockHeight: 69328535, // Spin
+  // startBlockHeight: 69328535, // Spin
+  startBlockHeight: 70429294, // Two Ref together , 294, 335
+  // startBlockHeight: 1179609, // sharnet
 };
 
 const receiptsSetToTrack = new Set<string>();
 
 const masterReceiptMap = new Map<string, string>();
 
-const didTxnWork = new Map<string, boolean>();
+const didTxnWork: { [receipId: string]: boolean } = {};
 
 const resultRows: {
   [receipt_id: string]: {
-    blocktime: number;
+    blockTime: number;
     blockHeight: number;
     sender: string;
     success: boolean;
@@ -107,10 +115,18 @@ async function handleStreamerMessage(
 
         const {
           id,
-          outcome: { logs, receiptIds, status, executorId },
+          outcome: { logs, receiptIds, executorId },
         } = executionOutcome;
 
-        const { receipt, receiptId, predecessorId } = ExeReceipt;
+        const status: any = executionOutcome.outcome.status;
+
+        if (!ExeReceipt) {
+          console.log('Receipt not found');
+          process.exit();
+        }
+
+        const { receiptId, predecessorId } = ExeReceipt;
+        const receipt: any = ExeReceipt.receipt;
 
         if (receiptsSetToTrack.has(receiptId)) {
           console.log(`Receipt details of ${receiptId}}`);
@@ -133,6 +149,13 @@ async function handleStreamerMessage(
               const methodName = action['FunctionCall'].methodName;
 
               const originalReceipt = masterReceiptMap.get(receiptId);
+
+              // If original Receipt not found,
+              // prev txns tracking got missde
+              if (!originalReceipt) {
+                console.log('original receipt not found');
+                process.exit();
+              }
 
               const returnedJson = takeActionsAndReturnArgs(action);
 
@@ -213,18 +236,20 @@ async function handleStreamerMessage(
                         pool_id = params[0]['market_id'];
 
                         base_token =
-                          tonicMarketMap[pool_id].base_token['type'] === 'ft'
-                            ? tonicMarketMap[pool_id].base_token.token_type[
-                                'account_id'
-                              ]
-                            : tonicMarketMap[pool_id].base_token.token_type
+                          (tonicMarketMap.get(pool_id)?.base_token as any)[
+                            'type'
+                          ] === 'ft'
+                            ? (tonicMarketMap.get(pool_id)?.base_token as any)
+                                .token_type['account_id']
+                            : (tonicMarketMap.get(pool_id)?.base_token as any)
                                 .type;
                         quote_token =
-                          tonicMarketMap[pool_id].quote_token['type'] === 'ft'
-                            ? tonicMarketMap[pool_id].quote_token.token_type[
-                                'account_id'
-                              ]
-                            : tonicMarketMap[pool_id].quote_token.token_type
+                          (tonicMarketMap.get(pool_id)?.quote_token as any)[
+                            'type'
+                          ] === 'ft'
+                            ? (tonicMarketMap.get(pool_id)?.quote_token as any)
+                                .token_type['account_id']
+                            : (tonicMarketMap.get(pool_id)?.quote_token as any)
                                 .type;
 
                         break;
@@ -233,8 +258,10 @@ async function handleStreamerMessage(
                         const params = JSON.parse(returnedJson['msg']);
                         pool_id = params['market_id'];
 
-                        base_token = spinMarketMap[pool_id].base.address;
-                        quote_token = spinMarketMap[pool_id].quote.address;
+                        base_token =
+                          spinMarketMap.get(pool_id)?.base.address ?? '';
+                        quote_token =
+                          spinMarketMap.get(pool_id)?.quote.address ?? '';
                         break;
                       }
                       default: {
@@ -294,9 +321,10 @@ async function handleStreamerMessage(
                 const success = status['SuccessValue'] ? true : false;
 
                 if (success) {
-                  const originalReceipt = masterReceiptMap.get(id);
+                  // TODO: Is it okay to get rid of the below line?
+                  // const originalReceipt = masterReceiptMap.get(id);
 
-                  didTxnWork.set(originalReceipt, true);
+                  didTxnWork[originalReceipt] = true;
 
                   resultRows[originalReceipt]['success'] = true;
 
@@ -321,7 +349,7 @@ async function handleStreamerMessage(
 
             masterReceiptMap.set(
               status['SuccessReceiptId'],
-              masterReceiptMap.get(id)
+              masterReceiptMap.get(id) ?? ''
             );
           }
 
@@ -366,14 +394,16 @@ async function handleStreamerMessage(
                       });
 
                       // For succes tracking
-                      didTxnWork.set(id, false);
+                      didTxnWork[id] = false;
 
                       resultRows[id] = {
                         dex,
-                        blocktime: new Big(block.header.timestampNanosec)
-                          .mul(new Big(10).pow(-9))
-                          .mul(new Big(1000))
-                          .toNumber(),
+                        blockTime: parseInt(
+                          new Big(block.header.timestampNanosec)
+                            .mul(new Big(10).pow(-9))
+                            .mul(new Big(1000))
+                            .toString()
+                        ),
                         blockHeight: block.header.height,
                         sender: action.signerId ?? predecessorId ?? '',
                         success: false,
@@ -401,17 +431,109 @@ async function handleStreamerMessage(
     );
   }
 
-  console.log(JSON.stringify(resultRows, null, 2));
+  if (Object.keys(resultRows).length) {
+    console.log('SWAPS');
+    console.log(
+      Object.keys(resultRows).map((txn) => {
+        const { blockTime, dex, sender, swaps } = resultRows[txn];
+        let out = `${txn} ${new Date(blockTime)
+          .toString()
+          .slice(0, 24)} ${dex} ${sender}`;
+        for (const swap of swaps) {
+          const { pool_id, amount_in, token_out, amount_out, token_in } = swap;
+          out += `\n${pool_id} ${amount_in} ${token_in} => ${amount_out} ${token_out}`;
+        }
+        return out;
+      })
+    );
+  }
 
   // if (masterReceiptMap.size) {
   //   console.log('Master Receipt Table');
   //   console.table(masterReceiptMap);
   // }
 
-  // if (didTxnWork.size) {
-  //   console.log('Txn Success Table');
-  //   console.table(didTxnWork);
-  // }
+  const swapRows: any[] = [];
+
+  if (Object.keys(didTxnWork)) {
+    // Add successful transactions into DB and write to .csv seperately.
+
+    let query = `INSERT INTO arbitoor_txns (
+      receipt_id, 
+      block_height, 
+      blocktime,
+      dex,
+      sender,
+      success,
+      amount_in,
+      amount_out,
+      pool_id,
+      token_in,
+      token_out ) VALUES `;
+
+    for (const txn of Object.keys(didTxnWork)) {
+      const { blockHeight, blockTime, dex, sender, success, swaps } =
+        resultRows[txn];
+
+      // Add only succeded swaps
+      if (!success) {
+        continue;
+      }
+
+      for (const swap of swaps) {
+        // console.log(swap);
+
+        const { amount_in, amount_out, pool_id, token_in, token_out } = swap;
+
+        swapRows.push({
+          txn,
+          blockHeight,
+          blockTime,
+          dex,
+          sender,
+          success,
+          amount_in,
+          amount_out,
+          pool_id,
+          token_in,
+          token_out,
+        });
+
+        // remove from tracking
+        didTxnWork[txn] = false;
+      }
+    }
+
+    // console.log(swapRows);
+
+    if (swapRows.length) {
+      console.log('Adding Txn into postgres');
+
+      query += `${swapRows.map(
+        ({
+          txn,
+          blockHeight,
+          blockTime,
+          dex,
+          sender,
+          success,
+          amount_in,
+          amount_out,
+          pool_id,
+          token_in,
+          token_out,
+        }) =>
+          `('${txn}', ${blockHeight}, ${blockTime}, '${dex}', '${sender}', '${success}', ${amount_in}, '${amount_out}', '${pool_id}', '${token_in}', '${token_out}')`
+      )}`;
+
+      query += `ON CONFLICT DO NOTHING;`;
+
+      // console.log(query);
+
+      const res = await pool.query(query);
+      console.log(res.rowCount, ' number of rows inserted');
+    }
+  }
 
   // shard1Logger.info(` ] }`);
 
@@ -431,30 +553,30 @@ let spinMarketMap: Map<string, SpinMarket>;
    */
 
   console.log('Setting up');
-  const tokens = await new TokenListProvider().resolve();
-  const tokenList = tokens.filterByNearEnv('mainnet').getList();
-  // console.log(tokenList);
-  tokenMap = tokenList.reduce((map, item) => {
-    map[item.address] = item;
-    return map;
-  }, new Map<string, TokenInfo>());
+  // const tokens = await new TokenListProvider().resolve();
+  // const tokenList = tokens.filterByNearEnv('mainnet').getList();
+  // // console.log(tokenList);
+  // tokenMap = tokenList.reduce((map, item) => {
+  //   map[item.address] = item;
+  //   return map;
+  // }, new Map<string, TokenInfo>());
 
-  provider = new InMemoryProvider(MainnetRpc, tokenMap);
+  // provider = new InMemoryProvider(MainnetRpc, tokenMap);
 
-  await provider.fetchPools();
+  // await provider.fetchPools();
 
-  const tonicMarkets = provider.getTonicMarkets();
-  const spinMarkets = provider.getSpinMarkets();
+  // const tonicMarkets = provider.getTonicMarkets();
+  // const spinMarkets = provider.getSpinMarkets();
 
-  tonicMarketMap = tonicMarkets.reduce((map, item) => {
-    map[item.id] = item;
-    return map;
-  }, new Map<string, TonicMarket>());
+  // tonicMarketMap = tonicMarkets.reduce((map, item) => {
+  //   map[item.id] = item;
+  //   return map;
+  // }, new Map<string, TonicMarket>());
 
-  spinMarketMap = spinMarkets.reduce((map, item) => {
-    map[item.id] = item;
-    return map;
-  }, new Map<string, SpinMarket>());
+  // spinMarketMap = spinMarkets.reduce((map, item) => {
+  //   map[item.id] = item;
+  //   return map;
+  // }, new Map<string, SpinMarket>());
 
   // console.log(tonicMarketMap);
 
@@ -472,8 +594,26 @@ let spinMarketMap: Map<string, SpinMarket>;
   await startStream(lakeConfig, handleStreamerMessage);
 })();
 
-function takeActionsAndReturnArgs(actions: types.ReceiptEnum): JSON {
-  let result: JSON;
+// TODO: Before exiting make sure to write resultsRow to a file to pick up from where it stopped.
+[
+  `exit`,
+  `SIGINT`,
+  // `SIGUSR1`,
+  // `SIGUSR2`,
+  `uncaughtException`,
+  `SIGTERM`,
+].forEach((eventType) => {
+  // process.on(eventType, cleanUpServer.bind(null, eventType));
+});
+
+function cleanUpServer(event: any) {
+  process.exit(1);
+  // Can do only sync events here
+}
+
+function takeActionsAndReturnArgs(actions: any): any {
+  let result: JSON | null = null;
+
   // Handle FunctionCall
   if (actions['FunctionCall'] && actions['FunctionCall'].args) {
     const args = actions['FunctionCall'].args;
@@ -486,6 +626,7 @@ function takeActionsAndReturnArgs(actions: types.ReceiptEnum): JSON {
       //   console.log(`Decoded args ${JSON.stringify(parsedJSONArgs, null, 2)}`);
     } catch {
       // TODO: handle better, exit to investigate what went wrong maybe?
+      result = null;
       console.log('FAILED INSIDE');
     }
   }

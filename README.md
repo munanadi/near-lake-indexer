@@ -13,6 +13,7 @@ A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com
 #### NOTES
 
 - `shard.chunk.receipts' or `shard.chunk.transactions`cannot be used to parse for`memo` field
+- Need to have `arbitoor_txns` table in local postgres before running the script. Schema [here](https://github.com/pisomanik/near-lake-indexer#table-schema) 
 
 #### PLAN
 
@@ -42,8 +43,28 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
 
 ##### Table Schema
 
-| `pool_id` or `market_id` | `token_in` | `token_out` | `amount_in` | `amount_out` | `dex` | `txn_hash` or `receipt_id` |
-| ------------------------ | ---------- | ----------- | ----------- | ------------ | ----- | -------------------------- |
+`numeric` might be bad for `token_in` and `token_out` but will need to see.
+
+```
+# \d arbitoor_txns;
+              Table "public.arbitoor_txns"
+    Column    |  Type   | Collation | Nullable | Default
+--------------+---------+-----------+----------+---------
+ receipt_id   | text    |           | not null |
+ block_height | numeric |           |          |
+ blocktime    | numeric |           |          |
+ dex          | text    |           |          |
+ sender       | text    |           |          |
+ success      | boolean |           |          |
+ amount_in    | numeric |           |          |
+ amount_out   | numeric |           |          |
+ pool_id      | text    |           | not null |
+ token_in     | text    |           |          |
+ token_out    | text    |           |          |
+Indexes:
+    "arbitoor_txns_pkey" PRIMARY KEY, btree (receipt_id, pool_id)
+
+```
 
 #### RESULTS
 
