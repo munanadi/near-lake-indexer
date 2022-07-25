@@ -57,12 +57,12 @@ const shard1Logger = createLogger({
 const lakeConfig: types.LakeConfig = {
   s3BucketName: 'near-lake-data-mainnet',
   s3RegionName: 'eu-central-1',
-  // startBlockHeight: 69253110, // Jumbo
+  startBlockHeight: 69253110, // Jumbo
   // startBlockHeight: 70223685, // Tonic
   // startBlockHeight: 69229361, // Ref
   // startBlockHeight: 69328535, // Spin
-  startBlockHeight: 70429294, // Two Ref together , 294, 335
-  // startBlockHeight: 1179609, // sharnet
+  // startBlockHeight: 70429294, // Two Ref together , 294, 335
+  // startBlockHeight: 68893936, // start of memo 01/07
 };
 
 const receiptsSetToTrack = new Set<string>();
@@ -129,7 +129,7 @@ async function handleStreamerMessage(
         const receipt: any = ExeReceipt.receipt;
 
         if (receiptsSetToTrack.has(receiptId)) {
-          console.log(`Receipt details of ${receiptId}}`);
+          // console.log(`Receipt details of ${receiptId}}`);
 
           // console.log({
           //   id,
@@ -235,18 +235,19 @@ async function handleStreamerMessage(
                         ];
                         pool_id = params[0]['market_id'];
 
+                        console.log(pool_id);
+                        console.log(tonicMarketMap.get(pool_id));
+
                         base_token =
-                          (tonicMarketMap.get(pool_id)?.base_token as any)[
-                            'type'
-                          ] === 'ft'
+                          (tonicMarketMap.get(pool_id)?.base_token as any)
+                            .token_type['type'] === 'ft'
                             ? (tonicMarketMap.get(pool_id)?.base_token as any)
                                 .token_type['account_id']
                             : (tonicMarketMap.get(pool_id)?.base_token as any)
                                 .type;
                         quote_token =
-                          (tonicMarketMap.get(pool_id)?.quote_token as any)[
-                            'type'
-                          ] === 'ft'
+                          (tonicMarketMap.get(pool_id)?.quote_token as any)
+                            .token_type['type'] === 'ft'
                             ? (tonicMarketMap.get(pool_id)?.quote_token as any)
                                 .token_type['account_id']
                             : (tonicMarketMap.get(pool_id)?.quote_token as any)
@@ -259,9 +260,9 @@ async function handleStreamerMessage(
                         pool_id = params['market_id'];
 
                         base_token =
-                          spinMarketMap.get(pool_id)?.base.address ?? '';
+                          spinMarketMap.get(+pool_id)?.base.address ?? '';
                         quote_token =
-                          spinMarketMap.get(pool_id)?.quote.address ?? '';
+                          spinMarketMap.get(+pool_id)?.quote.address ?? '';
                         break;
                       }
                       default: {
@@ -280,8 +281,8 @@ async function handleStreamerMessage(
                     });
 
                     // Add the first receipt to track ft_trasnfer for output
-                    console.log('receipts', receiptIds);
-                    console.log('original', originalReceipt);
+                    // console.log('receipts', receiptIds);
+                    // console.log('original', originalReceipt);
 
                     receiptIds.forEach((r) => {
                       receiptsSetToTrack.add(r); // Not sure if always the second one
@@ -545,7 +546,7 @@ async function handleStreamerMessage(
 let provider: InMemoryProvider | null;
 let tokenMap: Map<string, TokenInfo>;
 let tonicMarketMap: Map<string, TonicMarket>;
-let spinMarketMap: Map<string, SpinMarket>;
+let spinMarketMap: Map<number, SpinMarket>;
 
 (async () => {
   /**
@@ -553,43 +554,30 @@ let spinMarketMap: Map<string, SpinMarket>;
    */
 
   console.log('Setting up');
-  // const tokens = await new TokenListProvider().resolve();
-  // const tokenList = tokens.filterByNearEnv('mainnet').getList();
-  // // console.log(tokenList);
-  // tokenMap = tokenList.reduce((map, item) => {
-  //   map[item.address] = item;
-  //   return map;
-  // }, new Map<string, TokenInfo>());
+  const tokens = await new TokenListProvider().resolve();
+  const tokenList = tokens.filterByNearEnv('mainnet').getList();
+  // console.log(tokenList);
+  tokenMap = tokenList.reduce((map, item) => {
+    map.set(item.address, item);
+    return map;
+  }, new Map<string, TokenInfo>());
 
-  // provider = new InMemoryProvider(MainnetRpc, tokenMap);
+  provider = new InMemoryProvider(MainnetRpc, tokenMap);
 
-  // await provider.fetchPools();
+  await provider.fetchPools();
 
-  // const tonicMarkets = provider.getTonicMarkets();
-  // const spinMarkets = provider.getSpinMarkets();
+  const tonicMarkets = provider.getTonicMarkets();
+  const spinMarkets = provider.getSpinMarkets();
 
-  // tonicMarketMap = tonicMarkets.reduce((map, item) => {
-  //   map[item.id] = item;
-  //   return map;
-  // }, new Map<string, TonicMarket>());
+  tonicMarketMap = tonicMarkets.reduce((map, item) => {
+    map.set(item.id, item);
+    return map;
+  }, new Map<string, TonicMarket>());
 
-  // spinMarketMap = spinMarkets.reduce((map, item) => {
-  //   map[item.id] = item;
-  //   return map;
-  // }, new Map<string, SpinMarket>());
-
-  // console.log(tonicMarketMap);
-
-  // for(const marketId of Object.keys(tonicMarketMap)){
-  //   const {  } = tonicMarketMap.get(marketId]
-  // }
-  //   const { base_token, quote_token } =
-  //   tonicMarketMap[action.market_id];
-
-  // for (const m of Object.values(tonicMarketMap)) {
-  //   console.log(m.id, m.base_token, m.quote_token);
-  // }
-  // console.log(Object.keys(tokenMap));
+  spinMarketMap = spinMarkets.reduce((map, item) => {
+    map.set(item.id, item);
+    return map;
+  }, new Map<number, SpinMarket>());
 
   await startStream(lakeConfig, handleStreamerMessage);
 })();
