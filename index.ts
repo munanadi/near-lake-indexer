@@ -71,8 +71,9 @@ const masterReceiptMap = new Map<string, string>();
 
 const didTxnWork: { [receipId: string]: boolean } = {};
 
-const resultRows: {
-  [receipt_id: string]: {
+const resultRows = new Map<
+  string,
+  {
     blockTime: number;
     blockHeight: number;
     sender: string;
@@ -85,8 +86,8 @@ const resultRows: {
       token_in: string;
       token_out: string;
     }[];
-  };
-} = {};
+  }
+>();
 
 async function handleStreamerMessage(
   streamerMessage: types.StreamerMessage
@@ -175,12 +176,21 @@ async function handleStreamerMessage(
                   for (const action of msgActions) {
                     // Without this jumbo will add this action twice
                     if (methodName !== 'callback_ft_on_transfer') {
-                      resultRows[originalReceipt]['swaps'].push({
+                      const newSwapsArr =
+                        resultRows.get(originalReceipt)?.swaps ?? [];
+                      const oldData = resultRows.get(originalReceipt)!;
+
+                      newSwapsArr.push({
                         pool_id: action.pool_id,
                         amount_in: action.amount_in,
                         amount_out: '0',
                         token_in: action.token_in,
                         token_out: action.token_out ?? '0',
+                      });
+
+                      resultRows.set(originalReceipt, {
+                        ...oldData,
+                        swaps: newSwapsArr,
                       });
                     }
                   }
@@ -201,14 +211,22 @@ async function handleStreamerMessage(
                         // console.log(log);
 
                         // Add to result row
-                        resultRows[originalReceipt]['swaps'][i] = {
+                        const newSwapsArr =
+                          resultRows.get(originalReceipt)?.swaps ?? [];
+                        const oldData = resultRows.get(originalReceipt)!;
+
+                        newSwapsArr[i] = {
                           amount_in,
                           amount_out,
                           token_in,
                           token_out,
-                          pool_id:
-                            resultRows[originalReceipt]['swaps'][i].pool_id,
+                          pool_id: oldData['swaps'][i].pool_id,
                         };
+
+                        resultRows.set(originalReceipt, {
+                          ...oldData,
+                          swaps: newSwapsArr,
+                        });
 
                         i++;
                       }
@@ -272,12 +290,21 @@ async function handleStreamerMessage(
 
                     // console.log(JSON.stringify(tonicMarketMap[pool_id], null, 2));
 
-                    resultRows[originalReceipt]['swaps'].push({
+                    const newSwapsArr =
+                      resultRows.get(originalReceipt)?.swaps ?? [];
+                    const oldData = resultRows.get(originalReceipt)!;
+
+                    newSwapsArr.push({
                       pool_id,
                       amount_in,
                       amount_out: '0',
                       token_in: base_token,
                       token_out: quote_token,
+                    });
+
+                    resultRows.set(originalReceipt, {
+                      ...oldData,
+                      swaps: newSwapsArr,
                     });
 
                     // Add the first receipt to track ft_trasnfer for output
@@ -308,11 +335,20 @@ async function handleStreamerMessage(
 
                   // const originalReceipt = masterReceiptMap.get(receiptId);
 
-                  const result = resultRows[originalReceipt]['swaps'][0];
-                  resultRows[originalReceipt]['swaps'][0] = {
-                    ...result,
-                    amount_out,
-                  };
+                  const oldSwapData =
+                    resultRows.get(originalReceipt)?.swaps[0]!;
+
+                  const oldData = resultRows.get(originalReceipt)!;
+
+                  resultRows.set(originalReceipt, {
+                    ...oldData,
+                    swaps: [
+                      {
+                        ...oldSwapData,
+                        amount_out,
+                      },
+                    ],
+                  });
 
                   masterReceiptMap.delete(receiptId);
                 }
@@ -327,7 +363,12 @@ async function handleStreamerMessage(
 
                   didTxnWork[originalReceipt] = true;
 
-                  resultRows[originalReceipt]['success'] = true;
+                  const oldData = resultRows.get(originalReceipt)!;
+
+                  resultRows.set(originalReceipt, {
+                    ...oldData,
+                    success: true,
+                  });
 
                   // Write to CSV
                   // txnCsvLogger.info('info', {
@@ -378,16 +419,6 @@ async function handleStreamerMessage(
                     const dex = parsedJSONArgs['receiver_id'] ?? '';
 
                     if (memo === 'arbitoor') {
-                      // console.log(parsedJSONArgs);
-                      // console.log({
-                      //   id,
-                      //   receiptIds,
-                      //   status,
-                      //   executorId,
-                      //   receipt,
-                      //   receiptId,
-                      // });
-
                       // Add receipt ids to track
                       receiptIds.forEach((receipt) => {
                         masterReceiptMap.set(receipt, id);
@@ -397,7 +428,7 @@ async function handleStreamerMessage(
                       // For succes tracking
                       didTxnWork[id] = false;
 
-                      resultRows[id] = {
+                      resultRows.set(id, {
                         dex,
                         blockTime: parseInt(
                           new Big(block.header.timestampNanosec)
@@ -409,7 +440,7 @@ async function handleStreamerMessage(
                         sender: action.signerId ?? predecessorId ?? '',
                         success: false,
                         swaps: [],
-                      };
+                      });
                     }
                   } catch (e) {
                     // TODO: handle better, exit to investigate what went wrong maybe?
@@ -432,27 +463,23 @@ async function handleStreamerMessage(
     );
   }
 
-  if (Object.keys(resultRows).length) {
-    console.log('SWAPS');
-    console.log(
-      Object.keys(resultRows).map((txn) => {
-        const { blockTime, dex, sender, swaps } = resultRows[txn];
-        let out = `${txn} ${new Date(blockTime)
-          .toString()
-          .slice(0, 24)} ${dex} ${sender}`;
-        for (const swap of swaps) {
-          const { pool_id, amount_in, token_out, amount_out, token_in } = swap;
-          out += `\n${pool_id} ${amount_in} ${token_in} => ${amount_out} ${token_out}`;
-        }
-        return out;
-      })
-    );
-  }
+  for (const result of resultRows) {
+    const hash = result[0];
+    const { blockTime, dex, sender, swaps } = result[1];
 
-  // if (masterReceiptMap.size) {
-  //   console.log('Master Receipt Table');
-  //   console.table(masterReceiptMap);
-  // }
+    console.log(
+      `- ${hash} ${new Date(blockTime)
+        .toString()
+        .slice(0, 24)} ${dex} ${sender}`
+    );
+
+    for (const swap of swaps) {
+      const { pool_id, token_in, amount_in, token_out, amount_out } = swap;
+      console.log(
+        `\t ${pool_id} ${amount_in} ${token_in} -> ${amount_out} ${token_out}`
+      );
+    }
+  }
 
   const swapRows: any[] = [];
 
@@ -472,9 +499,9 @@ async function handleStreamerMessage(
       token_in,
       token_out ) VALUES `;
 
-    for (const txn of Object.keys(didTxnWork)) {
-      const { blockHeight, blockTime, dex, sender, success, swaps } =
-        resultRows[txn];
+    for (const result of resultRows) {
+      const txn = result[0];
+      const { blockHeight, blockTime, dex, sender, success, swaps } = result[1];
 
       // Add only succeded swaps
       if (!success) {
@@ -500,9 +527,9 @@ async function handleStreamerMessage(
           token_out,
         });
 
-        // remove from tracking
-        didTxnWork[txn] = false;
+        // remove from resultRows
       }
+      resultRows.delete(txn);
     }
 
     // console.log(swapRows);
@@ -553,31 +580,31 @@ let spinMarketMap: Map<number, SpinMarket>;
    * Setup - fetch tonic markets
    */
 
-  console.log('Setting up');
-  const tokens = await new TokenListProvider().resolve();
-  const tokenList = tokens.filterByNearEnv('mainnet').getList();
-  // console.log(tokenList);
-  tokenMap = tokenList.reduce((map, item) => {
-    map.set(item.address, item);
-    return map;
-  }, new Map<string, TokenInfo>());
+  // console.log('Setting up');
+  // const tokens = await new TokenListProvider().resolve();
+  // const tokenList = tokens.filterByNearEnv('mainnet').getList();
+  // // console.log(tokenList);
+  // tokenMap = tokenList.reduce((map, item) => {
+  //   map.set(item.address, item);
+  //   return map;
+  // }, new Map<string, TokenInfo>());
 
-  provider = new InMemoryProvider(MainnetRpc, tokenMap);
+  // provider = new InMemoryProvider(MainnetRpc, tokenMap);
 
-  await provider.fetchPools();
+  // await provider.fetchPools();
 
-  const tonicMarkets = provider.getTonicMarkets();
-  const spinMarkets = provider.getSpinMarkets();
+  // const tonicMarkets = provider.getTonicMarkets();
+  // const spinMarkets = provider.getSpinMarkets();
 
-  tonicMarketMap = tonicMarkets.reduce((map, item) => {
-    map.set(item.id, item);
-    return map;
-  }, new Map<string, TonicMarket>());
+  // tonicMarketMap = tonicMarkets.reduce((map, item) => {
+  //   map.set(item.id, item);
+  //   return map;
+  // }, new Map<string, TonicMarket>());
 
-  spinMarketMap = spinMarkets.reduce((map, item) => {
-    map.set(item.id, item);
-    return map;
-  }, new Map<number, SpinMarket>());
+  // spinMarketMap = spinMarkets.reduce((map, item) => {
+  //   map.set(item.id, item);
+  //   return map;
+  // }, new Map<number, SpinMarket>());
 
   await startStream(lakeConfig, handleStreamerMessage);
 })();
@@ -586,17 +613,18 @@ let spinMarketMap: Map<number, SpinMarket>;
 [
   `exit`,
   `SIGINT`,
-  // `SIGUSR1`,
-  // `SIGUSR2`,
+  `SIGUSR1`,
+  `SIGUSR2`,
   `uncaughtException`,
   `SIGTERM`,
 ].forEach((eventType) => {
-  // process.on(eventType, cleanUpServer.bind(null, eventType));
+  process.on(eventType, cleanUpServer.bind(null, eventType));
 });
 
 function cleanUpServer(event: any) {
-  process.exit(1);
+  // process.exit(1);
   // Can do only sync events here
+  // TODO: In case of server stop, write data in results row to a txt file or something 
 }
 
 function takeActionsAndReturnArgs(actions: any): any {
