@@ -3,7 +3,7 @@
 A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com/near/near-lake-framework-js).
 
 - [x] How to relate to the receipt ids that are parsed from a txns initially and map them back to this starting point.
-- [ ] What kind of table schema to store?
+- [x] What kind of table schema to store?
 - [x] ~~How many tokens were actually exchanged? Spin has brosh seriazlized logs.~~ Did away with other methods
 - [x] Able to read the receipts and filter out using `memo`
 - [x] Need to figure out how to check if transactions are successful or failed? `ft_resolve_transfer` ?
@@ -13,7 +13,13 @@ A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com
 #### NOTES
 
 - `shard.chunk.receipts' or `shard.chunk.transactions`cannot be used to parse for`memo` field
-- Need to have `arbitoor_txns` table in local postgres before running the script. Schema [here](https://github.com/pisomanik/near-lake-indexer#table-schema) 
+- Need to have `arbitoor_txns` table in local postgres before running the script. Schema [here](https://github.com/pisomanik/near-lake-indexer#table-schema)
+- Create `logs/not_written.txt` to catch all un written txns into a csv file to continue later
+- Takes a arg for starting block
+
+```
+ts-node index.ts 19283018 // This will start indexing from the given block
+```
 
 #### PLAN
 

@@ -1,26 +1,29 @@
 import { startStream, types } from 'near-lake-framework';
-import { createLogger, transports, format } from 'winston';
+import { createLogger, transports } from 'winston';
 // @ts-ignore
 import CSV from 'winston-csv-format';
 import { Big } from 'big.js';
-import { TokenInfo, TokenListProvider } from '@tonic-foundation/token-list';
-import { MainnetRpc } from 'near-workspaces';
+import { TokenInfo } from '@tonic-foundation/token-list';
+// import { MainnetRpc } from 'near-workspaces';
 import { InMemoryProvider, TonicMarket } from '@arbitoor/arbitoor-core';
 import { Market as SpinMarket } from '@spinfi/core';
 import { Pool } from 'pg';
+
+const startingBlock = +process.argv.slice(2)[0];
 
 const txnCsvLogger = createLogger({
   level: 'info',
   format: CSV(
     [
       'receipt_id',
-      'blocktime',
+      'block_height',
+      'block_time',
       'pool_id',
       'sender',
-      'amount0',
-      'amount1',
-      'token0',
-      'token1',
+      'amount_in',
+      'amount_out',
+      'token_in',
+      'token_out',
       'success',
       'dex',
     ],
@@ -28,7 +31,7 @@ const txnCsvLogger = createLogger({
   ),
   transports: [
     new transports.File({
-      filename: './logs/good_txns.txt',
+      filename: './logs/not_written.txt',
       level: 'info',
       maxFiles: 4000000,
     }),
@@ -39,29 +42,14 @@ const pool = new Pool({
   connectionString: 'postgres://postgres:root@localhost:5432/postgres',
 });
 
-const shard1Logger = createLogger({
-  level: 'info',
-  format: format.json(),
-  transports: [
-    new transports.File({
-      filename: './logs/shard1.json',
-      level: 'info',
-      maxFiles: 4000000,
-      format: format.combine(
-        format.printf((info) => JSON.stringify(info.message))
-      ),
-    }),
-  ],
-});
-
 const lakeConfig: types.LakeConfig = {
   s3BucketName: 'near-lake-data-mainnet',
   s3RegionName: 'eu-central-1',
-  startBlockHeight: 69253110, // Jumbo
+  // startBlockHeight: startingBlock ?? 69253110, // Jumbo
   // startBlockHeight: 70223685, // Tonic
   // startBlockHeight: 69229361, // Ref
   // startBlockHeight: 69328535, // Spin
-  // startBlockHeight: 70429294, // Two Ref together , 294, 335
+  startBlockHeight: 70429294, // Two Ref together , 294, 335
   // startBlockHeight: 68893936, // start of memo 01/07
 };
 
@@ -101,12 +89,7 @@ async function handleStreamerMessage(
     ).toString()} Shards: ${shards.length}`
   );
 
-  // shard1Logger.info(`{ \"block\": ${block.header.height} , \"chunks\": [ `);
   for (const shard of shards) {
-    // console.log(JSON.stringify(shard, null, 2));
-    // shard1Logger.info(JSON.stringify(shard));
-    // shard1Logger.info(',');
-
     if (shard.receiptExecutionOutcomes) {
       const receiptExecutionOutcomes = shard.receiptExecutionOutcomes;
 
@@ -130,17 +113,6 @@ async function handleStreamerMessage(
         const receipt: any = ExeReceipt.receipt;
 
         if (receiptsSetToTrack.has(receiptId)) {
-          // console.log(`Receipt details of ${receiptId}}`);
-
-          // console.log({
-          //   id,
-          //   receiptIds,
-          //   status,
-          //   executorId,
-          //   receipt,
-          //   receiptId,
-          // });
-
           if (receipt['Action'] && receipt['Action'].actions) {
             for (const action of receipt['Action'].actions) {
               if (!action['FunctionCall']) {
@@ -253,9 +225,6 @@ async function handleStreamerMessage(
                         ];
                         pool_id = params[0]['market_id'];
 
-                        console.log(pool_id);
-                        console.log(tonicMarketMap.get(pool_id));
-
                         base_token =
                           (tonicMarketMap.get(pool_id)?.base_token as any)
                             .token_type['type'] === 'ft'
@@ -308,8 +277,6 @@ async function handleStreamerMessage(
                     });
 
                     // Add the first receipt to track ft_trasnfer for output
-                    // console.log('receipts', receiptIds);
-                    // console.log('original', originalReceipt);
 
                     receiptIds.forEach((r) => {
                       receiptsSetToTrack.add(r); // Not sure if always the second one
@@ -317,23 +284,12 @@ async function handleStreamerMessage(
                     });
                   }
                 }
-
-                // console.log('POOL ACTIONS :', poolActions);
-                // console.log('LOGS :', logs);
-
-                // console.log(resultRows);
               } else if (methodName === 'ft_transfer') {
-                // THIS WONT WORK AS EXECUTOR ID IS LOST
-                // NEED TO DO SOMETHING TO RELEATE THIS TO TONIC.
-
                 if (
                   predecessorId === 'v1.orderbook.near' ||
                   predecessorId === 'spot.spin-fi.near'
                 ) {
-                  // console.log(returnedJson, returnedJson['amount']);
                   const amount_out = returnedJson['amount'] ?? '0';
-
-                  // const originalReceipt = masterReceiptMap.get(receiptId);
 
                   const oldSwapData =
                     resultRows.get(originalReceipt)?.swaps[0]!;
@@ -358,9 +314,6 @@ async function handleStreamerMessage(
                 const success = status['SuccessValue'] ? true : false;
 
                 if (success) {
-                  // TODO: Is it okay to get rid of the below line?
-                  // const originalReceipt = masterReceiptMap.get(id);
-
                   didTxnWork[originalReceipt] = true;
 
                   const oldData = resultRows.get(originalReceipt)!;
@@ -369,16 +322,6 @@ async function handleStreamerMessage(
                     ...oldData,
                     success: true,
                   });
-
-                  // Write to CSV
-                  // txnCsvLogger.info('info', {
-                  //   txn_hash: txnHash,
-                  //   txn_blocktime: txnBlockTime,
-                  //   pool_addr: data.poolState.toString(),
-                  //   sender: data.sender.toString(),
-                  //   amount0: data.amount0.toString(),
-                  //   amount1: data.amount1.toString(),
-                  // });
                 }
               }
             }
@@ -613,8 +556,8 @@ let spinMarketMap: Map<number, SpinMarket>;
 [
   `exit`,
   `SIGINT`,
-  `SIGUSR1`,
-  `SIGUSR2`,
+  // `SIGUSR1`,
+  // `SIGUSR2`,
   `uncaughtException`,
   `SIGTERM`,
 ].forEach((eventType) => {
@@ -622,9 +565,66 @@ let spinMarketMap: Map<number, SpinMarket>;
 });
 
 function cleanUpServer(event: any) {
-  // process.exit(1);
   // Can do only sync events here
-  // TODO: In case of server stop, write data in results row to a txt file or something 
+  // TODO: In case of server stop, write data in results row to a txt file or something
+  console.log('--------EXITING---------');
+  console.log(event);
+  console.log('Write result rows to a txt file');
+
+  console.log(resultRows.size, ' number of txns are not written');
+
+  // console.log(resultRows);
+
+  for (const result of resultRows) {
+    const receipt_id = result[0];
+    const {
+      blockHeight: block_height,
+      blockTime: block_time,
+      dex,
+      sender,
+      success,
+      swaps,
+    } = result[1];
+
+    if (swaps.length == 0) {
+      // Write to CSV
+      txnCsvLogger.info('info', {
+        receipt_id,
+        block_height,
+        block_time,
+        pool_id: '',
+        sender,
+        amount_in: '',
+        amount_out: '',
+        token_in: '',
+        token_out: '',
+        success,
+        dex,
+      });
+      continue;
+    }
+
+    for (const swap of swaps) {
+      const { pool_id, token_in, amount_in, token_out, amount_out } = swap;
+
+      // Write to CSV
+      txnCsvLogger.info('info', {
+        receipt_id,
+        block_height,
+        block_time,
+        pool_id,
+        sender,
+        amount_in,
+        amount_out,
+        token_in,
+        token_out,
+        success,
+        dex,
+      });
+    }
+  }
+
+  process.exit(1);
 }
 
 function takeActionsAndReturnArgs(actions: any): any {
