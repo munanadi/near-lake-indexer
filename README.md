@@ -16,6 +16,7 @@ A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com
 - Need to have `arbitoor_txns` table in local postgres before running the script. Schema [here](https://github.com/pisomanik/near-lake-indexer#table-schema)
 - Create `logs/not_written.txt` to catch all un written txns into a csv file to continue later
 - Takes a arg for starting block
+- Required `near-cli` to be installed to fetch markets for tonic and spin
 
 ```
 ts-node index.ts 19283018 // This will start indexing from the given block

@@ -4,12 +4,11 @@ import { createLogger, transports } from 'winston';
 import CSV from 'winston-csv-format';
 import { Big } from 'big.js';
 import { TokenInfo, TokenListProvider } from '@tonic-foundation/token-list';
-// import { MainnetRpc } from 'near-workspaces';
+import { MainnetRpc } from 'near-workspaces';
 import { InMemoryProvider, TonicMarket } from '@arbitoor/arbitoor-core';
 import { Market as SpinMarket } from '@spinfi/core';
 import { Pool } from 'pg';
 import axios from 'axios';
-import { MainnetRpc } from 'near-workspaces';
 
 const startingBlock = +process.argv.slice(2)[0];
 
@@ -51,8 +50,8 @@ const lakeConfig: types.LakeConfig = {
   // startBlockHeight: 70223685, // Tonic
   // startBlockHeight: 69229361, // Ref
   // startBlockHeight: 69328535, // Spin
-  startBlockHeight: 70429294, // Two Ref together , 294, 335
-  // startBlockHeight: 68893936, // start of memo 01/07
+  // startBlockHeight: 70429294, // Two Ref together , 294, 335
+  startBlockHeight: startingBlock ?? 68893936, // start of memo 01/07
 };
 
 const receiptsSetToTrack = new Set<string>();
