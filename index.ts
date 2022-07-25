@@ -3,11 +3,13 @@ import { createLogger, transports } from 'winston';
 // @ts-ignore
 import CSV from 'winston-csv-format';
 import { Big } from 'big.js';
-import { TokenInfo } from '@tonic-foundation/token-list';
+import { TokenInfo, TokenListProvider } from '@tonic-foundation/token-list';
 // import { MainnetRpc } from 'near-workspaces';
 import { InMemoryProvider, TonicMarket } from '@arbitoor/arbitoor-core';
 import { Market as SpinMarket } from '@spinfi/core';
 import { Pool } from 'pg';
+import axios from 'axios';
+import { MainnetRpc } from 'near-workspaces';
 
 const startingBlock = +process.argv.slice(2)[0];
 
@@ -456,6 +458,11 @@ async function handleStreamerMessage(
 
         const { amount_in, amount_out, pool_id, token_in, token_out } = swap;
 
+        // If token prices are present, then multiply it with the amount
+        const final_amount_in = (tokenPrices.get(token_in) ?? 1) * +amount_in;
+        const final_amount_out =
+          (tokenPrices.get(token_out) ?? 1) * +amount_out;
+
         swapRows.push({
           txn,
           blockHeight,
@@ -463,8 +470,8 @@ async function handleStreamerMessage(
           dex,
           sender,
           success,
-          amount_in,
-          amount_out,
+          amount_in: final_amount_in,
+          amount_out: final_amount_out,
           pool_id,
           token_in,
           token_out,
@@ -523,31 +530,34 @@ let spinMarketMap: Map<number, SpinMarket>;
    * Setup - fetch tonic markets
    */
 
-  // console.log('Setting up');
-  // const tokens = await new TokenListProvider().resolve();
-  // const tokenList = tokens.filterByNearEnv('mainnet').getList();
-  // // console.log(tokenList);
-  // tokenMap = tokenList.reduce((map, item) => {
-  //   map.set(item.address, item);
-  //   return map;
-  // }, new Map<string, TokenInfo>());
+  console.log('Setting up');
+  const tokens = await new TokenListProvider().resolve();
+  const tokenList = tokens.filterByNearEnv('mainnet').getList();
+  // console.log(tokenList);
+  tokenMap = tokenList.reduce((map, item) => {
+    map.set(item.address, item);
+    return map;
+  }, new Map<string, TokenInfo>());
 
-  // provider = new InMemoryProvider(MainnetRpc, tokenMap);
+  provider = new InMemoryProvider(MainnetRpc, tokenMap);
 
-  // await provider.fetchPools();
+  await provider.fetchPools();
 
-  // const tonicMarkets = provider.getTonicMarkets();
-  // const spinMarkets = provider.getSpinMarkets();
+  const tonicMarkets = provider.getTonicMarkets();
+  const spinMarkets = provider.getSpinMarkets();
 
-  // tonicMarketMap = tonicMarkets.reduce((map, item) => {
-  //   map.set(item.id, item);
-  //   return map;
-  // }, new Map<string, TonicMarket>());
+  tonicMarketMap = tonicMarkets.reduce((map, item) => {
+    map.set(item.id, item);
+    return map;
+  }, new Map<string, TonicMarket>());
 
-  // spinMarketMap = spinMarkets.reduce((map, item) => {
-  //   map.set(item.id, item);
-  //   return map;
-  // }, new Map<number, SpinMarket>());
+  spinMarketMap = spinMarkets.reduce((map, item) => {
+    map.set(item.id, item);
+    return map;
+  }, new Map<number, SpinMarket>());
+
+  // fetch and store prices
+  await fetchTokenPrices();
 
   await startStream(lakeConfig, handleStreamerMessage);
 })();
@@ -647,4 +657,33 @@ function takeActionsAndReturnArgs(actions: any): any {
     }
   }
   return result;
+}
+
+// Fetch token prices every 30 mins
+let tokenPrices = new Map<string, number>();
+let cachedTokenPrices = new Map<string, number>();
+
+setInterval(async () => {
+  await fetchTokenPrices();
+}, 1000 * 60 * 30);
+
+async function fetchTokenPrices() {
+  console.log('Fetching token prices');
+  let data: any = null;
+  try {
+    data = (await axios.get('https://indexer.ref.finance/list-token-price'))
+      .data;
+  } catch (e) {
+    console.log('Err fetching prices,', e);
+  }
+
+  if (!data) {
+    tokenPrices = cachedTokenPrices;
+  }
+
+  console.log('Fetched token prices');
+
+  for (const add of Object.keys(data)) {
+    tokenPrices.set(add, +data[add].price);
+  }
 }
