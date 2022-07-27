@@ -458,9 +458,12 @@ async function handleStreamerMessage(
         const { amount_in, amount_out, pool_id, token_in, token_out } = swap;
 
         // If token prices are present, then multiply it with the amount
-        const final_amount_in = (tokenPrices.get(token_in) ?? 1) * +amount_in;
-        const final_amount_out =
-          (tokenPrices.get(token_out) ?? 1) * +amount_out;
+        const final_amount_in = new Big(amount_in.toString())
+          .mul(new Big(tokenPrices.get(token_in) ?? '1'))
+          .toString();
+        const final_amount_out = new Big(amount_out.toString())
+          .mul(new Big(tokenPrices.get(token_out) ?? '1'))
+          .toString();
 
         swapRows.push({
           txn,
