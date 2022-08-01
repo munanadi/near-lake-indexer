@@ -2,6 +2,10 @@
 
 A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com/near/near-lake-framework-js).
 
+- [ ] Need to add a new daily volumes table that will be filled by the cronjob run every night.
+- [ ] Need to handle failed transactions that are terminated in between due to slippage or other more efficiently.
+      look for `amounts` with 0
+
 - [x] How to relate to the receipt ids that are parsed from a txns initially and map them back to this starting point.
 - [x] What kind of table schema to store?
 - [x] ~~How many tokens were actually exchanged? Spin has brosh seriazlized logs.~~ Did away with other methods
