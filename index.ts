@@ -179,7 +179,7 @@ async function handleStreamerMessage(
                         const amount_in = logSplit[1];
                         const token_in = logSplit[2];
                         const amount_out = logSplit[4];
-                        const token_out = logSplit[5];
+                        const token_out = logSplit[5].split(',')[0];
 
                         // console.log(log);
 
