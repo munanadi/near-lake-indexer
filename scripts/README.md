@@ -6,7 +6,9 @@ This script is to populate daily volume of tokens flow.
 
 ### `populateData.ts`
 
-This would pull markets among the existing dexes and create a token map of all the tokens.
+This would pull markets among the existing dexes and create a token map of all the tokens. 
+
+- `fetchImages()` downloads all images too a folder too.
 
 This list then can be used in nodes where we would require decimal information of a token.
 

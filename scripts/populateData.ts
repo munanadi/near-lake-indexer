@@ -14,6 +14,11 @@ import { Market as SpinMarket } from '@spinfi/core';
 import axios from 'axios';
 import { MainnetRpc } from 'near-workspaces';
 
+// import data for creating images
+// @ts-ignore
+import unimportedData from './tokens-data.json';
+import fs from 'fs';
+
 // import data from local file instead of fetching always
 // @ts-ignore
 // import localData from './data/data';
@@ -33,7 +38,7 @@ const logger = createLogger({
   ],
 });
 
-(async () => {
+async function fetchTokensNotInList() {
   const notInListSet = new Set<string>();
 
   // If needed to pull data
@@ -192,4 +197,25 @@ const logger = createLogger({
   logger.info(tMap);
 
   console.log(dupSet, dupSet.size, ' number of tokens were not added');
+}
+
+// Loops through data and stores images in jpeg instead of base 64 format
+async function fetchImages() {
+  const tokensList = unimportedData;
+
+  for (const token of tokensList) {
+    const { icon, name } = token;
+
+    if (!icon) return;
+
+    const base64Data = icon?.replace(/^data:image\/jpeg;base64,/, '');
+
+    fs.writeFile(`./images/${name}.jpeg`, base64Data, 'base64', (err) => {
+      console.log(err);
+    });
+  }
+}
+
+(async function () {
+  await fetchImages();
 })();
