@@ -110,18 +110,21 @@ const pool = new Pool({
   } = {};
 
   // 1st July
-  const startDate = new Date('07-01-2022');
+  const startDate = new Date('08-04-2022');
   // Today
-  const endDate = new Date('07-02-2022');
+  const endDate = new Date('08-07-2022');
 
   let now = startDate;
 
   while (now.getTime() < endDate.getTime()) {
     // get until next day from start
+    console.log('--------------------');
     let tmr = new Date(now.getTime() + 1000 * 60 * 60 * 24);
 
     console.log(
-      `Fetching data for the period ${now.toString()} to ${tmr.toString()}`
+      `Fetching data for the period ${now.toString().slice(0, 15)} to ${tmr
+        .toString()
+        .slice(0, 15)}`
     );
 
     const result = await pool.query(
@@ -165,13 +168,13 @@ const pool = new Pool({
         row.amount_in,
         new Big(row.amount_in).mul(new Big(10).pow(-token0Decimals)).toString(),
         token0Decimals,
-        tokenIn,
+        tokensMap.get(tokenIn)?.symbol ?? 'XXX',
         row.amount_out,
         new Big(row.amount_out)
           .mul(new Big(10).pow(-token1Decimals))
           .toString(),
         token1Decimals,
-        tokenOut
+        tokensMap.get(tokenOut)?.symbol ?? 'XXX'
       );
     }
 

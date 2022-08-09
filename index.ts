@@ -1,16 +1,38 @@
 import { startStream, types } from 'near-lake-framework';
-import { createLogger, transports } from 'winston';
+import { createLogger, transports, format } from 'winston';
 // @ts-ignore
 import CSV from 'winston-csv-format';
 import { Big } from 'big.js';
 import { TokenInfo, TokenListProvider } from '@tonic-foundation/token-list';
 import { MainnetRpc } from 'near-workspaces';
-import { InMemoryProvider, TonicMarket } from '@arbitoor/arbitoor-core';
+import {
+  FormattedPool,
+  InMemoryProvider,
+  StablePool,
+  TonicMarket,
+} from '@arbitoor/arbitoor-core';
 import { Market as SpinMarket } from '@spinfi/core';
 import { Pool } from 'pg';
 import axios from 'axios';
 
+// @ts-ignore
+import localData from './cronjob/data/data.json';
+
 const startingBlock = +process.argv.slice(2)[0];
+
+// To keep track of toekns that are not in the tonic list
+const tokenMetadataLogger = createLogger({
+  level: 'info',
+  format: CSV(['token_add', 'receipt_id', 'added_to_list'], {
+    delimiter: ',',
+  }),
+  transports: [
+    new transports.File({
+      filename: './logs/tokens.txt',
+      level: 'info',
+    }),
+  ],
+});
 
 const txnCsvLogger = createLogger({
   level: 'info',
@@ -39,8 +61,14 @@ const txnCsvLogger = createLogger({
   ],
 });
 
+const readPool = new Pool({
+  connectionString:
+    'postgres://public_readonly:nearprotocol@mainnet.db.explorer.indexer.near.dev/mainnet_explorer',
+});
+
 const pool = new Pool({
-  connectionString: 'postgres://postgres:root@localhost:5432/postgres',
+  connectionString: 'postgres://ubuntu:root@localhost:5433/ubuntu',
+  // connectionString: 'postgres://ubuntu:root@localhost:5432/ubuntu',
 });
 
 const lakeConfig: types.LakeConfig = {
@@ -165,6 +193,14 @@ async function handleStreamerMessage(
                         ...oldData,
                         swaps: newSwapsArr,
                       });
+
+                      // Will add to set to fetch meta data
+                      if (!tokenSet.has(action.token_in)) {
+                        notInTokenSet.add(action.token_in);
+                      }
+                      if (!tokenSet.has(action.token_out)) {
+                        notInTokenSet.add(action.token_out);
+                      }
                     }
                   }
 
@@ -182,6 +218,13 @@ async function handleStreamerMessage(
                         const token_out = logSplit[5].split(',')[0];
 
                         // console.log(log);
+                        // Will add to set to fetch meta data
+                        if (!tokenSet.has(token_in)) {
+                          notInTokenSet.add(token_in);
+                        }
+                        if (!tokenSet.has(token_out)) {
+                          notInTokenSet.add(token_out);
+                        }
 
                         // Add to result row
                         const newSwapsArr =
@@ -271,6 +314,14 @@ async function handleStreamerMessage(
                       token_in: base_token,
                       token_out: quote_token,
                     });
+
+                    // Will add to set to fetch meta data
+                    if (!tokenSet.has(base_token)) {
+                      notInTokenSet.add(base_token);
+                    }
+                    if (!tokenSet.has(quote_token)) {
+                      notInTokenSet.add(quote_token);
+                    }
 
                     resultRows.set(originalReceipt, {
                       ...oldData,
@@ -399,6 +450,30 @@ async function handleStreamerMessage(
     }
   }
 
+  // WHAT IF WE FETCH TOKENS METADATA HERE AND STORE IN TOKEN MAP?
+  for (const token of notInTokenSet) {
+    console.log(`Fetching metadata for ${token}`);
+    const data = await axios.get(
+      `https://near-enhanced-api-server-mainnet.onrender.com/nep141/metadata/${token}`
+    );
+    if (data?.data) {
+      console.log(`Fetced ${data?.data.toString()}`);
+      tokenMap.set(token, data?.data);
+      notInTokenSet.delete(token);
+      tokenMetadataLogger.info('info', {
+        token_add: token,
+        receipt_id: '----',
+        added_to_list: true,
+      });
+    } else {
+      tokenMetadataLogger.info('info', {
+        token_add: token,
+        receipt_id: 'XXX',
+        added_to_list: false,
+      });
+    }
+  }
+
   if (receiptsSetToTrack.size) {
     console.log(
       `Receipt Ids to track are ${Array.from(receiptsSetToTrack).map((r) =>
@@ -419,16 +494,42 @@ async function handleStreamerMessage(
 
     for (const swap of swaps) {
       const { pool_id, token_in, amount_in, token_out, amount_out } = swap;
-      console.log(
-        `\t ${pool_id} ${amount_in} ${token_in} -> ${amount_out} ${token_out}`
-      );
+
+      let token0Decimals = tokenMap.get(token_in)?.decimals ?? 1;
+      let token1Decimals = tokenMap.get(token_out)?.decimals ?? 1;
+
+      // STOOPID HACK TO GET AROUND NOT BEING ABLE TO * (10 ** -24)
+      if (token0Decimals >= 15 || token1Decimals >= 15) {
+        const rest0 = token0Decimals - 15;
+        const rest1 = token1Decimals - 15;
+
+        console.log(
+          `\t ${pool_id} ${new Big(
+            new Big(amount_in).mul(new Big(10).pow(-15)).toString()
+          )
+            .mul(new Big(10).pow(-rest0))
+            .toString()} ${token_in} -> ${new Big(
+            new Big(amount_out).mul(new Big(10).pow(-15)).toString()
+          )
+            .mul(new Big(10).pow(-rest1))
+            .toString()} ${token_out}`
+        );
+      } else {
+        console.log(
+          `\t ${pool_id} ${new Big(amount_in)
+            .mul(new Big(10).pow(-token0Decimals))
+            .toString()} ${token_in} -> ${new Big(amount_out)
+            .mul(new Big(10).pow(-token1Decimals))
+            .toString()} ${token_out}`
+        );
+      }
     }
   }
 
   const swapRows: any[] = [];
 
   if (Object.keys(didTxnWork)) {
-    // Add successful transactions into DB and write to .csv seperately.
+    // Add successful transactions into DB
 
     let query = `INSERT INTO arbitoor_txns (
       receipt_id, 
@@ -438,7 +539,13 @@ async function handleStreamerMessage(
       sender,
       success,
       amount_in,
+      amount_in_d,
+      amount_in$,
+      amount_in$_d,
       amount_out,
+      amount_out_d,
+      amount_out$,
+      amount_out$_d,
       pool_id,
       token_in,
       token_out ) VALUES `;
@@ -457,6 +564,27 @@ async function handleStreamerMessage(
 
         const { amount_in, amount_out, pool_id, token_in, token_out } = swap;
 
+        // token decimals
+        const token0Decimal = tokenMap.get(token_in)?.decimals ?? 1;
+        const token1Decimal = tokenMap.get(token_out)?.decimals ?? 1;
+
+        const amount0InDecimals =
+          token0Decimal >= 15
+            ? new Big(
+                new Big(amount_in.toString()).mul(new Big(10).pow(-15))
+              ).mul(new Big(10).pow(-(token0Decimal - 15)))
+            : new Big(amount_in.toString()).mul(
+                new Big(10).pow(-token0Decimal)
+              );
+        const amount1InDecimals =
+          token1Decimal >= 15
+            ? new Big(
+                new Big(amount_out.toString()).mul(new Big(10).pow(-15))
+              ).mul(new Big(10).pow(-(token1Decimal - 15)))
+            : new Big(amount_out.toString()).mul(
+                new Big(10).pow(-token1Decimal)
+              );
+
         // If token prices are present, then multiply it with the amount
         const final_amount_in = new Big(amount_in.toString())
           .mul(new Big(tokenPrices.get(token_in) ?? '1'))
@@ -465,6 +593,23 @@ async function handleStreamerMessage(
           .mul(new Big(tokenPrices.get(token_out) ?? '1'))
           .toString();
 
+        const finalAmountInDecimals =
+          token0Decimal >= 15
+            ? new Big(
+                new Big(final_amount_in.toString()).mul(new Big(10).pow(-15))
+              ).mul(new Big(10).pow(-(token0Decimal - 15)))
+            : new Big(final_amount_in.toString()).mul(
+                new Big(10).pow(-token0Decimal)
+              );
+        const finalAmountOutDecimals =
+          token0Decimal >= 15
+            ? new Big(
+                new Big(final_amount_out.toString()).mul(new Big(10).pow(-15))
+              ).mul(new Big(10).pow(-(token1Decimal - 15)))
+            : new Big(final_amount_out.toString()).mul(
+                new Big(10).pow(-token1Decimal)
+              );
+
         swapRows.push({
           txn,
           blockHeight,
@@ -472,8 +617,14 @@ async function handleStreamerMessage(
           dex,
           sender,
           success,
-          amount_in: final_amount_in,
-          amount_out: final_amount_out,
+          amount_in,
+          amount_in_d: amount0InDecimals,
+          amount_in$: final_amount_in,
+          amount_in$_d: finalAmountInDecimals,
+          amount_out,
+          amount_out_d: amount1InDecimals,
+          amount_out$: final_amount_out,
+          amount_out$_d: finalAmountOutDecimals,
           pool_id,
           token_in,
           token_out,
@@ -498,12 +649,18 @@ async function handleStreamerMessage(
           sender,
           success,
           amount_in,
+          amount_in_d,
+          amount_in$,
+          amount_in$_d,
           amount_out,
+          amount_out_d,
+          amount_out$,
+          amount_out$_d,
           pool_id,
           token_in,
           token_out,
         }) =>
-          `('${txn}', ${blockHeight}, ${blockTime}, '${dex}', '${sender}', '${success}', ${amount_in}, '${amount_out}', '${pool_id}', '${token_in}', '${token_out}')`
+          `('${txn}', ${blockHeight}, ${blockTime}, '${dex}', '${sender}', '${success}', ${amount_in}, ${amount_in_d}, ${amount_in$}, ${amount_in$_d}, '${amount_out}', '${amount_out_d}', '${amount_out$}', '${amount_out$_d}', '${pool_id}', '${token_in}', '${token_out}')`
       )}`;
 
       query += `ON CONFLICT DO NOTHING;`;
@@ -524,8 +681,10 @@ async function handleStreamerMessage(
 // To fetch token lists
 let provider: InMemoryProvider | null;
 let tokenMap: Map<string, TokenInfo>;
-let tonicMarketMap: Map<string, TonicMarket>;
-let spinMarketMap: Map<number, SpinMarket>;
+let tonicMarketMap: Map<string, any>;
+let spinMarketMap: Map<number, any>;
+let tokenSet = new Set<string>();
+const notInTokenSet = new Set<string>();
 
 (async () => {
   /**
@@ -533,30 +692,62 @@ let spinMarketMap: Map<number, SpinMarket>;
    */
 
   console.log('Setting up');
-  const tokens = await new TokenListProvider().resolve();
-  const tokenList = tokens.filterByNearEnv('mainnet').getList();
-  // console.log(tokenList);
+  const tokenList = localData.tokensMap as Array<TokenInfo>;
+  // const tokens = await new TokenListProvider().resolve();
+  // const tokenList = tokens.filterByNearEnv('mainnet').getList();
+  // // console.log(tokenList);
   tokenMap = tokenList.reduce((map, item) => {
     map.set(item.address, item);
+    tokenSet.add(item.address);
     return map;
   }, new Map<string, TokenInfo>());
 
-  provider = new InMemoryProvider(MainnetRpc, tokenMap);
+  // Local data
+  const tonicMarkets = localData.tonicMarkets;
+  const spinMarkets = localData.spinMarkets as Array<SpinMarket>;
+  const refPools = localData.refPools as Array<FormattedPool>;
+  const refStablePools = localData.refStablePools;
+  const jumboPools = localData.jumboPools;
+  const jumboStablePools = localData.jumboStablePools;
 
-  await provider.fetchPools();
+  // logger.info(tonicMarkets);
 
-  const tonicMarkets = provider.getTonicMarkets();
-  const spinMarkets = provider.getSpinMarkets();
+  const refMarketTokenMap = new Map<string, string[]>();
+
+  for (const pool of refPools) {
+    refMarketTokenMap.set(pool.id.toString(), pool.token_account_ids);
+  }
+  for (const pool of refStablePools) {
+    refMarketTokenMap.set(pool.id.toString(), pool.token_account_ids);
+  }
+
+  const jumboMarketTokenMap = new Map<string, string[]>();
+
+  for (const pool of jumboPools) {
+    jumboMarketTokenMap.set(pool.id.toString(), pool.token_account_ids);
+  }
+  for (const pool of jumboStablePools) {
+    jumboMarketTokenMap.set(pool.id.toString(), pool.token_account_ids);
+  }
+
+  // Local data setup ends
+
+  // provider = new InMemoryProvider(MainnetRpc, tokenMap);
+
+  // await provider.fetchPools();
+
+  // const tonicMarkets = provider.getTonicMarkets();
+  // const spinMarkets = provider.getSpinMarkets();
 
   tonicMarketMap = tonicMarkets.reduce((map, item) => {
     map.set(item.id, item);
     return map;
-  }, new Map<string, TonicMarket>());
+  }, new Map<string, any>());
 
   spinMarketMap = spinMarkets.reduce((map, item) => {
     map.set(item.id, item);
     return map;
-  }, new Map<number, SpinMarket>());
+  }, new Map<number, any>());
 
   // fetch and store prices
   await fetchTokenPrices();
@@ -573,7 +764,7 @@ let spinMarketMap: Map<number, SpinMarket>;
   `uncaughtException`,
   `SIGTERM`,
 ].forEach((eventType) => {
-  process.on(eventType, cleanUpServer.bind(null, eventType));
+  // process.on(eventType, cleanUpServer.bind(null, eventType));
 });
 
 function cleanUpServer(event: any) {

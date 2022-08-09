@@ -6,6 +6,7 @@ A simple indexer built on top of the [NEAR Lake Framework JS](https://github.com
 - [ ] Need to handle failed transactions that are terminated in between due to slippage or other more efficiently.
       look for `amounts` with 0
 
+- [x] Handled multiplication errors with dividing twice. (i.e `* 10 ** -24` => `(* 10 ** -15) * (10 ** -9)` now )
 - [x] How to relate to the receipt ids that are parsed from a txns initially and map them back to this starting point.
 - [x] What kind of table schema to store?
 - [x] ~~How many tokens were actually exchanged? Spin has brosh seriazlized logs.~~ Did away with other methods
@@ -57,24 +58,37 @@ There are four Dexes to track transactions for currently -Ref, Jumbo, Tonic, Spi
 `numeric` might be bad for `token_in` and `token_out` but will need to see.
 
 ```
-# \d arbitoor_txns;
-              Table "public.arbitoor_txns"
-    Column    |  Type   | Collation | Nullable | Default
---------------+---------+-----------+----------+---------
- receipt_id   | text    |           | not null |
- block_height | numeric |           |          |
- blocktime    | numeric |           |          |
- dex          | text    |           |          |
- sender       | text    |           |          |
- success      | boolean |           |          |
- amount_in    | numeric |           |          |
- amount_out   | numeric |           |          |
- pool_id      | text    |           | not null |
- token_in     | text    |           |          |
- token_out    | text    |           |          |
+ \d arbitoor_txns
+                   Table "public.arbitoor_txns"
+    Column     |       Type       | Collation | Nullable | Default 
+---------------+------------------+-----------+----------+---------
+ receipt_id    | text             |           | not null | 
+ block_height  | bigint           |           |          | 
+ blocktime     | bigint           |           |          | 
+ dex           | text             |           |          | 
+ sender        | text             |           |          | 
+ success       | boolean          |           |          | 
+ amount_in$    | numeric          |           |          | 
+ amount_out$   | numeric          |           |          | 
+ amount_in$_d  | double precision |           |          | 
+ amount_out$_d | double precision |           |          | 
+ amount_in     | numeric          |           |          | 
+ amount_out    | numeric          |           |          | 
+ amount_in_d   | double precision |           |          | 
+ amount_out_d  | double precision |           |          | 
+ pool_id       | text             |           | not null | 
+ token_in      | text             |           |          | 
+ token_out     | text             |           |          | 
 Indexes:
     "arbitoor_txns_pkey" PRIMARY KEY, btree (receipt_id, pool_id)
 
+```
+
+#### Connect to public DB using psql
+
+```
+ psql -h mainnet.db.explorer.indexer.near.dev -U public_readonly -d mainnet_explorer
+ // You will be prompted for password: nearprotocol
 ```
 
 #### RESULTS
