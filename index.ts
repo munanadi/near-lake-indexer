@@ -21,6 +21,20 @@ import localData from './scripts/data/data.json';
 const startingBlock = +process.argv.slice(2)[0];
 
 // To keep track of toekns that are not in the tonic list
+const txnErrLogger = createLogger({
+  level: 'info',
+  format: CSV(['receipt_id', 'block_height'], {
+    delimiter: ',',
+  }),
+  transports: [
+    new transports.File({
+      filename: './logs/failed-txns.txt',
+      level: 'info',
+    }),
+  ],
+});
+
+// To keep track of toekns that are not in the tonic list
 const tokenMetadataLogger = createLogger({
   level: 'info',
   format: CSV(['token_add', 'receipt_id', 'added_to_list'], {
@@ -95,6 +109,7 @@ const resultRows = new Map<
     blockHeight: number;
     sender: string;
     success: boolean;
+    swapSuccess: boolean;
     dex: string;
     swaps: {
       pool_id: string;
@@ -254,6 +269,33 @@ async function handleStreamerMessage(
                   )
                 ) {
                   if (methodName === 'ft_on_transfer') {
+                    // Check for errors from the smart contract. In result of this part
+                    if (status && status['Failure']) {
+                      console.log('###########################');
+                      console.log(
+                        'SKIPPING THIS AS FAILURE',
+                        JSON.stringify(status['Failure'])
+                      );
+
+                      // Remove sub receipts that are tracked for this original receipt
+                      for (const receipt of Array.from(receiptsSetToTrack)) {
+                        if (masterReceiptMap.get(receipt) === originalReceipt) {
+                          receiptsSetToTrack.delete(receipt);
+                          masterReceiptMap.delete(receipt);
+                        }
+                      }
+
+                      // Write to table with swapSuccess as false
+                      const data = resultRows.get(originalReceipt)!;
+
+                      resultRows.set(originalReceipt, {
+                        ...data,
+                        success: true,
+                      });
+
+                      continue;
+                    }
+
                     const amount_in = returnedJson['amount'];
 
                     const swapTemp: {
@@ -415,6 +457,7 @@ async function handleStreamerMessage(
                   resultRows.set(originalReceipt, {
                     ...oldData,
                     success: true,
+                    swapSuccess: true,
                   });
                 }
               }
@@ -475,6 +518,7 @@ async function handleStreamerMessage(
                         ),
                         blockHeight: block.header.height,
                         sender: action.signerId ?? predecessorId ?? '',
+                        swapSuccess: false,
                         success: false,
                         swaps: [],
                       });
@@ -589,11 +633,48 @@ async function handleStreamerMessage(
 
     for (const result of resultRows) {
       const txn = result[0];
-      const { blockHeight, blockTime, dex, sender, success, swaps } = result[1];
+      const {
+        blockHeight,
+        blockTime,
+        dex,
+        sender,
+        success,
+        swapSuccess,
+        swaps,
+      } = result[1];
 
       // Add only succeded swaps
       if (!success) {
         continue;
+      }
+
+      // Entry for swap failures
+      if (!swaps.length) {
+        // Write to a logger locally
+        txnErrLogger.info('info', {
+          receipt_id: txn,
+          block_height: blockHeight,
+        });
+
+        swapRows.push({
+          txn,
+          blockHeight,
+          blockTime,
+          dex,
+          sender,
+          success: swapSuccess,
+          amount_in: '0',
+          amount_in_d: '0',
+          amount_in$: '0',
+          amount_in$_d: '0',
+          amount_out: '0',
+          amount_out_d: '0',
+          amount_out$: '0',
+          amount_out$_d: '0',
+          pool_id: '',
+          token_in: '',
+          token_out: '',
+        });
       }
 
       for (const swap of swaps) {
@@ -653,7 +734,7 @@ async function handleStreamerMessage(
           blockTime,
           dex,
           sender,
-          success,
+          success: swapSuccess,
           amount_in,
           amount_in_d: amount0InDecimals,
           amount_in$: final_amount_in,
@@ -725,7 +806,7 @@ const notInTokenSet = new Set<string>();
 
 (async () => {
   /**
-   * Setup - fetch tonic markets
+   * Setup - Fetch Markets and Token prices
    */
 
   console.log('Setting up');
