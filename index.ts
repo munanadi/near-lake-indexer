@@ -16,7 +16,7 @@ import { Pool } from 'pg';
 import axios from 'axios';
 
 // @ts-ignore
-import localData from './cronjob/data/data.json';
+import localData from './scripts/data/data.json';
 
 const startingBlock = +process.argv.slice(2)[0];
 
@@ -138,7 +138,7 @@ async function handleStreamerMessage(
           process.exit();
         }
 
-        const { receiptId, predecessorId } = ExeReceipt;
+        const { receiptId, predecessorId, receiverId } = ExeReceipt;
         const receipt: any = ExeReceipt.receipt;
 
         if (receiptsSetToTrack.has(receiptId)) {
@@ -183,10 +183,10 @@ async function handleStreamerMessage(
 
                       newSwapsArr.push({
                         pool_id: action.pool_id,
-                        amount_in: action.amount_in,
+                        amount_in: action.amount_in ?? '0',
                         amount_out: '0',
                         token_in: action.token_in,
-                        token_out: action.token_out ?? '0',
+                        token_out: action.token_out ?? '',
                       });
 
                       resultRows.set(originalReceipt, {
@@ -256,27 +256,43 @@ async function handleStreamerMessage(
                   if (methodName === 'ft_on_transfer') {
                     const amount_in = returnedJson['amount'];
 
-                    let pool_id = '';
+                    const swapTemp: {
+                      pool_id: string;
+                      base_token: string;
+                      quote_token: string;
+                      min_output_amount: string;
+                    }[] = [];
 
-                    let base_token = '';
-                    let quote_token = '';
+                    if (executorId === 'spot.spin-fi.near') {
+                      const params = JSON.parse(returnedJson['msg']);
+                      const pool_id = params['market_id'];
 
-                    switch (executorId) {
-                      case 'v1.orderbook.near': {
-                        // Only one pool hops for now
-                        const params = JSON.parse(returnedJson['msg'])[
-                          'params'
-                        ];
-                        pool_id = params[0]['market_id'];
+                      const base_token =
+                        spinMarketMap.get(+pool_id)?.base.address ?? '';
+                      const quote_token =
+                        spinMarketMap.get(+pool_id)?.quote.address ?? '';
 
-                        base_token =
+                      swapTemp.push({
+                        pool_id,
+                        base_token,
+                        quote_token,
+                        min_output_amount: '0',
+                      });
+                    } else if (executorId === 'v1.orderbook.near') {
+                      const params = JSON.parse(returnedJson['msg'])['params'];
+
+                      // Handle multiple pool hops
+                      for (const pool of params) {
+                        const pool_id = pool['market_id'];
+
+                        const base_token =
                           (tonicMarketMap.get(pool_id)?.base_token as any)
                             .token_type['type'] === 'ft'
                             ? (tonicMarketMap.get(pool_id)?.base_token as any)
                                 .token_type['account_id']
                             : (tonicMarketMap.get(pool_id)?.base_token as any)
                                 .type;
-                        quote_token =
+                        const quote_token =
                           (tonicMarketMap.get(pool_id)?.quote_token as any)
                             .token_type['type'] === 'ft'
                             ? (tonicMarketMap.get(pool_id)?.quote_token as any)
@@ -284,21 +300,16 @@ async function handleStreamerMessage(
                             : (tonicMarketMap.get(pool_id)?.quote_token as any)
                                 .type;
 
-                        break;
+                        swapTemp.push({
+                          pool_id,
+                          base_token,
+                          quote_token,
+                          min_output_amount: pool.min_output_token ?? '0',
+                        });
                       }
-                      case 'spot.spin-fi.near': {
-                        const params = JSON.parse(returnedJson['msg']);
-                        pool_id = params['market_id'];
-
-                        base_token =
-                          spinMarketMap.get(+pool_id)?.base.address ?? '';
-                        quote_token =
-                          spinMarketMap.get(+pool_id)?.quote.address ?? '';
-                        break;
-                      }
-                      default: {
-                        console.log('-!!!!!!!!!!');
-                      }
+                    } else {
+                      console.log('!!!!!!!!!!!!!!!!!!!!!!1');
+                      break;
                     }
 
                     // console.log(JSON.stringify(tonicMarketMap[pool_id], null, 2));
@@ -307,31 +318,38 @@ async function handleStreamerMessage(
                       resultRows.get(originalReceipt)?.swaps ?? [];
                     const oldData = resultRows.get(originalReceipt)!;
 
-                    newSwapsArr.push({
-                      pool_id,
-                      amount_in,
-                      amount_out: '0',
-                      token_in: base_token,
-                      token_out: quote_token,
-                    });
+                    for (const swap of swapTemp) {
+                      const {
+                        pool_id,
+                        base_token,
+                        quote_token,
+                        min_output_amount,
+                      } = swap;
 
-                    // Will add to set to fetch meta data
-                    if (!tokenSet.has(base_token)) {
-                      notInTokenSet.add(base_token);
+                      newSwapsArr.push({
+                        pool_id,
+                        amount_in,
+                        amount_out: min_output_amount ?? '0',
+                        token_in: base_token,
+                        token_out: quote_token,
+                      });
+
+                      // Will add to set to fetch meta data
+                      if (!tokenSet.has(base_token)) {
+                        notInTokenSet.add(base_token);
+                      }
+                      if (!tokenSet.has(quote_token)) {
+                        notInTokenSet.add(quote_token);
+                      }
+
+                      resultRows.set(originalReceipt, {
+                        ...oldData,
+                        swaps: newSwapsArr,
+                      });
                     }
-                    if (!tokenSet.has(quote_token)) {
-                      notInTokenSet.add(quote_token);
-                    }
-
-                    resultRows.set(originalReceipt, {
-                      ...oldData,
-                      swaps: newSwapsArr,
-                    });
-
-                    // Add the first receipt to track ft_trasnfer for output
 
                     receiptIds.forEach((r) => {
-                      receiptsSetToTrack.add(r); // Not sure if always the second one
+                      receiptsSetToTrack.add(r);
                       masterReceiptMap.set(r, originalReceipt);
                     });
                   }
@@ -341,22 +359,46 @@ async function handleStreamerMessage(
                   predecessorId === 'v1.orderbook.near' ||
                   predecessorId === 'spot.spin-fi.near'
                 ) {
-                  const amount_out = returnedJson['amount'] ?? '0';
+                  const finalAmountOut = returnedJson['amount'] ?? '0';
 
-                  const oldSwapData =
-                    resultRows.get(originalReceipt)?.swaps[0]!;
+                  // Handle for multiple swaps
+                  for (const swap of resultRows.get(originalReceipt)?.swaps ??
+                    []) {
+                    if (!swap) continue;
 
-                  const oldData = resultRows.get(originalReceipt)!;
+                    let {
+                      amount_in,
+                      amount_out,
+                      pool_id,
+                      token_in,
+                      token_out,
+                    } = swap;
 
-                  resultRows.set(originalReceipt, {
-                    ...oldData,
-                    swaps: [
-                      {
-                        ...oldSwapData,
-                        amount_out,
-                      },
-                    ],
-                  });
+                    const oldData = resultRows.get(originalReceipt)!;
+
+                    // For spin check if the pools are inverted
+                    if (predecessorId === 'spot.spin-fi.near') {
+                      const quote_token = receiverId;
+                      if (quote_token === token_in) {
+                        let tmp = token_out;
+                        token_out = token_in;
+                        token_in = tmp;
+                      }
+                    }
+
+                    resultRows.set(originalReceipt, {
+                      ...oldData,
+                      swaps: [
+                        {
+                          amount_in,
+                          amount_out: finalAmountOut,
+                          token_in,
+                          token_out,
+                          pool_id,
+                        },
+                      ],
+                    });
+                  }
 
                   masterReceiptMap.delete(receiptId);
                 }
@@ -499,30 +541,25 @@ async function handleStreamerMessage(
       let token1Decimals = tokenMap.get(token_out)?.decimals ?? 1;
 
       // STOOPID HACK TO GET AROUND NOT BEING ABLE TO * (10 ** -24)
-      if (token0Decimals >= 15 || token1Decimals >= 15) {
-        const rest0 = token0Decimals - 15;
-        const rest1 = token1Decimals - 15;
-
-        console.log(
-          `\t ${pool_id} ${new Big(
-            new Big(amount_in).mul(new Big(10).pow(-15)).toString()
-          )
-            .mul(new Big(10).pow(-rest0))
-            .toString()} ${token_in} -> ${new Big(
-            new Big(amount_out).mul(new Big(10).pow(-15)).toString()
-          )
-            .mul(new Big(10).pow(-rest1))
-            .toString()} ${token_out}`
-        );
-      } else {
-        console.log(
-          `\t ${pool_id} ${new Big(amount_in)
-            .mul(new Big(10).pow(-token0Decimals))
-            .toString()} ${token_in} -> ${new Big(amount_out)
-            .mul(new Big(10).pow(-token1Decimals))
-            .toString()} ${token_out}`
-        );
-      }
+      console.log(
+        `\t ${pool_id} ${
+          token0Decimals >= 15
+            ? new Big(
+                new Big(amount_in).mul(new Big(10).pow(-15)).toString()
+              ).mul(new Big(10).pow(-(token0Decimals - 15)))
+            : new Big(amount_in)
+                .mul(new Big(10).pow(-token0Decimals))
+                .toString()
+        } ${token_in} -> ${
+          token1Decimals >= 15
+            ? new Big(
+                new Big(amount_out).mul(new Big(10).pow(-15)).toString()
+              ).mul(new Big(10).pow(-(token1Decimals - 15)))
+            : new Big(amount_out)
+                .mul(new Big(10).pow(-token1Decimals))
+                .toString()
+        } ${token_out}`
+      );
     }
   }
 
@@ -739,7 +776,7 @@ const notInTokenSet = new Set<string>();
   // const tonicMarkets = provider.getTonicMarkets();
   // const spinMarkets = provider.getSpinMarkets();
 
-  tonicMarketMap = tonicMarkets.reduce((map, item) => {
+  tonicMarketMap = tonicMarkets.reduce((map: any, item: any) => {
     map.set(item.id, item);
     return map;
   }, new Map<string, any>());
