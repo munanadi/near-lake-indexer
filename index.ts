@@ -320,130 +320,273 @@ async function handleStreamerMessage(
                         quote_token,
                         min_output_amount: '0',
                       });
-                    } else if (executorId === 'v1.orderbook.near') {
-                      const params = JSON.parse(returnedJson['msg'])['params'];
 
-                      // Handle multiple pool hops
-                      for (const pool of params) {
-                        const pool_id = pool['market_id'];
+                      const newSwapsArr =
+                        resultRows.get(originalReceipt)?.swaps ?? [];
+                      const oldData = resultRows.get(originalReceipt)!;
 
-                        const base_token =
-                          (tonicMarketMap.get(pool_id)?.base_token as any)
-                            .token_type['type'] === 'ft'
-                            ? (tonicMarketMap.get(pool_id)?.base_token as any)
-                                .token_type['account_id']
-                            : (tonicMarketMap.get(pool_id)?.base_token as any)
-                                .type;
-                        const quote_token =
-                          (tonicMarketMap.get(pool_id)?.quote_token as any)
-                            .token_type['type'] === 'ft'
-                            ? (tonicMarketMap.get(pool_id)?.quote_token as any)
-                                .token_type['account_id']
-                            : (tonicMarketMap.get(pool_id)?.quote_token as any)
-                                .type;
-
-                        swapTemp.push({
+                      // NOTE: Doesn't really make sense to array this now, But lets refactor this when we parse spin logs
+                      for (const swap of swapTemp) {
+                        const {
                           pool_id,
                           base_token,
                           quote_token,
-                          min_output_amount: pool.min_output_token ?? '0',
+                          min_output_amount,
+                        } = swap;
+
+                        newSwapsArr.push({
+                          pool_id,
+                          amount_in,
+                          amount_out: min_output_amount ?? '0',
+                          token_in: base_token,
+                          token_out: quote_token,
                         });
+
+                        // Will add to set to fetch meta data
+                        if (!tokenSet.has(base_token)) {
+                          notInTokenSet.add(base_token);
+                        }
+                        if (!tokenSet.has(quote_token)) {
+                          notInTokenSet.add(quote_token);
+                        }
+
+                        resultRows.set(originalReceipt, {
+                          ...oldData,
+                          swaps: newSwapsArr,
+                        });
+                      }
+
+                      // NOTE: Need to track further receipts only for spot.
+                      // As we parse logs and figure out tonic
+                      receiptIds.forEach((r) => {
+                        receiptsSetToTrack.add(r);
+                        masterReceiptMap.set(r, originalReceipt);
+                      });
+                    } else if (executorId === 'v1.orderbook.near') {
+                      const params = JSON.parse(returnedJson['msg'])['params'];
+
+                      const swapsData = new Map<
+                        string,
+                        {
+                          pool_id: string;
+                          side: string;
+                          amount_in: string;
+                          amount_out: string;
+                          token_in: string;
+                          token_out: string;
+                        }
+                      >();
+
+                      // Parsing logs to get 'Fill' and 'Order'
+                      for (const log of logs) {
+                        const jsonLog = JSON.parse(log);
+
+                        const { type, data } = jsonLog;
+
+                        switch (type) {
+                          case 'Fill': {
+                            const pool_id = data['market_id'].toString();
+                            const order_id = data['order_id'].toString();
+
+                            const token_in =
+                              (tonicMarketMap.get(pool_id)?.base_token as any)
+                                .token_type['type'] === 'ft'
+                                ? (
+                                    tonicMarketMap.get(pool_id)
+                                      ?.base_token as any
+                                  ).token_type['account_id']
+                                : (
+                                    tonicMarketMap.get(pool_id)
+                                      ?.base_token as any
+                                  ).type;
+                            const token_out =
+                              (tonicMarketMap.get(pool_id)?.quote_token as any)
+                                .token_type['type'] === 'ft'
+                                ? (
+                                    tonicMarketMap.get(pool_id)
+                                      ?.quote_token as any
+                                  ).token_type['account_id']
+                                : (
+                                    tonicMarketMap.get(pool_id)
+                                      ?.quote_token as any
+                                  ).type;
+
+                            // Will add to set to fetch meta data
+                            if (!tokenSet.has(token_in)) {
+                              notInTokenSet.add(token_in);
+                            }
+                            if (!tokenSet.has(token_out)) {
+                              notInTokenSet.add(token_out);
+                            }
+
+                            let fillQty = BigInt('0');
+                            let quoteQty = BigInt('0');
+
+                            for (const fill of data['fills']) {
+                              fillQty += BigInt(fill['fill_qty']);
+                              quoteQty += BigInt(fill['quote_qty']);
+                            }
+
+                            const order = {
+                              pool_id,
+                              token_in: token_in.toString(),
+                              token_out: token_out.toString(),
+                              side: 'XXX',
+                              amount_in: fillQty.toString(),
+                              amount_out: quoteQty.toString(),
+                            };
+
+                            swapsData.set(order_id, order);
+
+                            break;
+                          }
+                          case 'Order': {
+                            const order_id = data['order_id'].toString();
+                            const side = data['side'].toString();
+
+                            const oldSwapData = swapsData.get(order_id);
+
+                            if (!oldSwapData) {
+                              console.log(
+                                'swap data not found? Out of order? Skipping',
+                                order_id
+                              );
+                            } else {
+                              // update the side for this order
+
+                              // if buy flip order of tokens and set input to fillQty
+                              // else input to quoteQty
+                              if (side === 'Buy') {
+                                swapsData.set(order_id, {
+                                  ...oldSwapData,
+                                  token_in: oldSwapData.token_out,
+                                  token_out: oldSwapData.token_in,
+                                  amount_in: oldSwapData.amount_out.toString(),
+                                  amount_out: oldSwapData.amount_in.toString(),
+                                  side,
+                                });
+                              } else {
+                                swapsData.set(order_id, {
+                                  ...oldSwapData,
+                                  side,
+                                });
+                              }
+                            }
+
+                            break;
+                          }
+                          default: {
+                            console.log('UNKNOWN TYPE', type);
+                          }
+                        }
+                      }
+
+                      // console.log('LOGS', logs);
+                      for (const swapData of swapsData) {
+                        const {
+                          amount_in,
+                          token_in,
+                          amount_out,
+                          token_out,
+                          pool_id,
+                        } = swapData[1];
+
+                        const token0Decimal =
+                          tokenMap.get(token_in)?.decimals ?? 1;
+                        const token1Decimal =
+                          tokenMap.get(token_out)?.decimals ?? 1;
+
+                        console.log('\t', swapData[0], ' order ID');
+                        console.log(
+                          '\t',
+                          new Big(amount_in)
+                            .mul(new Big('10').pow(-token0Decimal))
+                            .toString(),
+                          token_in,
+                          ' => ',
+                          new Big(amount_out)
+                            .mul(new Big('10').pow(-token1Decimal))
+                            .toString(),
+                          token_out
+                        );
+
+                        const newSwapsArr =
+                          resultRows.get(originalReceipt)?.swaps ?? [];
+                        const oldData = resultRows.get(originalReceipt)!;
+
+                        newSwapsArr.push({
+                          amount_in,
+                          amount_out,
+                          pool_id,
+                          token_in,
+                          token_out,
+                        });
+
+                        resultRows.set(originalReceipt, {
+                          ...oldData,
+                          success: true,
+                          swapSuccess: true,
+                          swaps: newSwapsArr,
+                        });
+
+                        // masterReceiptMap.delete(receiptId);
+                      }
+
+                      // Remove receitps ids related to original recepipt as no tracking required any longer
+                      for (const receipt of Array.from(receiptsSetToTrack)) {
+                        if (
+                          originalReceipt ===
+                            masterReceiptMap.get(receipt.toString()) ??
+                          ''
+                        ) {
+                          receiptsSetToTrack.delete(receipt);
+                        }
                       }
                     } else {
                       console.log('!!!!!!!!!!!!!!!!!!!!!!1');
                       break;
                     }
+                  }
+                }
+              } else if (
+                methodName === 'ft_transfer' &&
+                predecessorId === 'spot.spin-fi.near'
+              ) {
+                const finalAmountOut = returnedJson['amount'] ?? '0';
 
-                    // console.log(JSON.stringify(tonicMarketMap[pool_id], null, 2));
+                // Handle for multiple swaps
+                for (const swap of resultRows.get(originalReceipt)?.swaps ??
+                  []) {
+                  if (!swap) continue;
 
-                    const newSwapsArr =
-                      resultRows.get(originalReceipt)?.swaps ?? [];
-                    const oldData = resultRows.get(originalReceipt)!;
+                  let { amount_in, amount_out, pool_id, token_in, token_out } =
+                    swap;
 
-                    for (const swap of swapTemp) {
-                      const {
-                        pool_id,
-                        base_token,
-                        quote_token,
-                        min_output_amount,
-                      } = swap;
+                  const oldData = resultRows.get(originalReceipt)!;
 
-                      newSwapsArr.push({
-                        pool_id,
+                  // For spin check if the pools are inverted
+                  const quote_token = receiverId;
+                  if (quote_token === token_in) {
+                    let tmp = token_out;
+                    token_out = token_in;
+                    token_in = tmp;
+                  }
+
+                  resultRows.set(originalReceipt, {
+                    ...oldData,
+                    swaps: [
+                      {
                         amount_in,
-                        amount_out: min_output_amount ?? '0',
-                        token_in: base_token,
-                        token_out: quote_token,
-                      });
-
-                      // Will add to set to fetch meta data
-                      if (!tokenSet.has(base_token)) {
-                        notInTokenSet.add(base_token);
-                      }
-                      if (!tokenSet.has(quote_token)) {
-                        notInTokenSet.add(quote_token);
-                      }
-
-                      resultRows.set(originalReceipt, {
-                        ...oldData,
-                        swaps: newSwapsArr,
-                      });
-                    }
-
-                    receiptIds.forEach((r) => {
-                      receiptsSetToTrack.add(r);
-                      masterReceiptMap.set(r, originalReceipt);
-                    });
-                  }
+                        amount_out: finalAmountOut,
+                        token_in,
+                        token_out,
+                        pool_id,
+                      },
+                    ],
+                  });
                 }
-              } else if (methodName === 'ft_transfer') {
-                if (
-                  predecessorId === 'v1.orderbook.near' ||
-                  predecessorId === 'spot.spin-fi.near'
-                ) {
-                  const finalAmountOut = returnedJson['amount'] ?? '0';
 
-                  // Handle for multiple swaps
-                  for (const swap of resultRows.get(originalReceipt)?.swaps ??
-                    []) {
-                    if (!swap) continue;
-
-                    let {
-                      amount_in,
-                      amount_out,
-                      pool_id,
-                      token_in,
-                      token_out,
-                    } = swap;
-
-                    const oldData = resultRows.get(originalReceipt)!;
-
-                    // For spin check if the pools are inverted
-                    if (predecessorId === 'spot.spin-fi.near') {
-                      const quote_token = receiverId;
-                      if (quote_token === token_in) {
-                        let tmp = token_out;
-                        token_out = token_in;
-                        token_in = tmp;
-                      }
-                    }
-
-                    resultRows.set(originalReceipt, {
-                      ...oldData,
-                      swaps: [
-                        {
-                          amount_in,
-                          amount_out: finalAmountOut,
-                          token_in,
-                          token_out,
-                          pool_id,
-                        },
-                      ],
-                    });
-                  }
-
-                  masterReceiptMap.delete(receiptId);
-                }
+                masterReceiptMap.delete(receiptId);
               } else if (methodName === 'ft_resolve_transfer') {
                 // Success txn check
 
