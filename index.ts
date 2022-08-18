@@ -635,6 +635,17 @@ async function handleStreamerMessage(
                 if (action['FunctionCall'].methodName === 'ft_transfer_call') {
                   const args = action['FunctionCall'].args;
 
+                  // Check for failure message here
+                  if (status && status['Failure']) {
+                    console.log('###########################');
+                    console.log(
+                      'SKIPPING THIS AS FAILURE',
+                      JSON.stringify(status['Failure'])
+                    );
+
+                    continue;
+                  }
+
                   try {
                     const decodedArgs = Buffer.from(args.toString(), 'base64');
                     const parsedJSONArgs = JSON.parse(decodedArgs.toString());
